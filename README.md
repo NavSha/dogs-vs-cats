@@ -22,7 +22,7 @@ Feel free to clone it and make changes to it. Pull requests are welcome.
 
 Navneet Sharma
 
-# Aknowledgements
+# Acknowledgements
 
 Deep Learning for Python Book
 
