@@ -2,6 +2,7 @@ import os,shutil
 original_dataset_dir = '/Users/NavSha/Documents/tensorflow-projects/Cat_Dog_data'
 original_dataset_dir_cat = '/Users/NavSha/Documents/tensorflow-projects/Cat_Dog_data/Cat/'
 original_dataset_dir_dog = '/Users/NavSha/Documents/tensorflow-projects/Cat_Dog_data/Dog'
+#set base directory
 base_dir = '/Users/NavSha/Documents/tensorflow-projects/cats_and_dogs_small'
 os.mkdir(base_dir)
 
