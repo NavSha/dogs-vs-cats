@@ -1,10 +1,26 @@
+'''
+Summary:
+	Loads the dataset and trains the classifier
+    model on dogs and cats images
+
+Returns:
+	Returns JSON as well as H5 file for the model
+    which can be used by server for classification
+    and deployment
+'''
+
 import os,shutil
+from keras import layers
+from keras import models
+
+'''
 original_dataset_dir = '/Users/NavSha/Documents/tensorflow-projects/Cat_Dog_data'
 original_dataset_dir_cat = '/Users/NavSha/Documents/tensorflow-projects/Cat_Dog_data/Cat/'
 original_dataset_dir_dog = '/Users/NavSha/Documents/tensorflow-projects/Cat_Dog_data/Dog'
 #set base directory
 base_dir = '/Users/NavSha/Documents/tensorflow-projects/cats_and_dogs_small'
 os.mkdir(base_dir)
+
 
 #create training, validation and test directories
 train_dir = os.path.join(base_dir, 'train')
@@ -70,24 +86,23 @@ for fname in fnames:
     src = os.path.join(original_dataset_dir_dog, fname)
     dst = os.path.join(test_dogs_dir,fname)
     shutil.copyfile(src,dst)
+'''
 
-#define the model
-from keras import layers
-from keras import models
-
-model = models.Sequential()
-model.add(layers.Conv2D(32, (3,3), activation = 'relu', input_shape=(150,150,3)))
-model.add(layers.MaxPooling2D((2,2)))
-model.add(layers.Conv2D(64, (3,3), activation = 'relu'))
-model.add(layers.MaxPooling2D((2,2)))
-model.add(layers.Conv2D(128,(3,3), activation = 'relu'))
-model.add(layers.MaxPooling2D((2,2)))
-model.add(layers.Conv2D(128,(3,3),activation = 'relu'))
-model.add(layers.MaxPooling2D((2,2)))
-model.add(layers.Flatten())
-model.add(layers.Dense(512, activation = 'relu'))
-model.add(layers.Dense(1,activation = 'sigmoid'))
-model.summary()
+def create_model():
+# create a model with 3 conv layers and 3 maxpooling layers
+    model = models.Sequential()
+    model.add(layers.Conv2D(32, (3,3), activation = 'relu', input_shape=(150,150,3)))
+    model.add(layers.MaxPooling2D((2,2)))
+    model.add(layers.Conv2D(64, (3,3), activation = 'relu'))
+    model.add(layers.MaxPooling2D((2,2)))
+    model.add(layers.Conv2D(128,(3,3), activation = 'relu'))
+    model.add(layers.MaxPooling2D((2,2)))
+    model.add(layers.Conv2D(128,(3,3),activation = 'relu'))
+    model.add(layers.MaxPooling2D((2,2)))
+    model.add(layers.Flatten())
+    model.add(layers.Dense(512, activation = 'relu'))
+    model.add(layers.Dense(1,activation = 'sigmoid'))
+    return model
 
 #compile the model
 from keras import optimizers
