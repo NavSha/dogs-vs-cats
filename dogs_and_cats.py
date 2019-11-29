@@ -62,7 +62,10 @@ def training():
     #compile the model
     model.compile(loss='binary_crossentropy', optimizer=optimizers.RMSprop(lr=1e-4),metrics=['acc'])
 
+    checkpointer = ModelCheckpoint(filepath='model_ugc.h5', monitor = 'val_loss', verbose = 1, save_best_only=True, mode='auto')
+    stop = EarlyStopping(monitor='val_loss', patience=3, verbose=1, mode='auto',restore_best_weights=True)
     history = model.fit_generator(train_generator, steps_per_epoch=100,epochs=10,validation_data = validation_generator,validation_steps=50)
+
     model.save('cats_and_dogs_small_1.h5')
 
     model_json = model.to_json()
