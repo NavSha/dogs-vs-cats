@@ -15,6 +15,7 @@ from keras import models
 from keras import optimizers
 from keras.preprocessing.image import ImageDataGenerator
 import matplotlib.pyplot as plt
+from keras import backend as K
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 IMG_WIDTH, IMG_HEIGHT = 150, 150
