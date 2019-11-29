@@ -54,9 +54,9 @@ def training():
     train_datagen = ImageDataGenerator(rescale=1./255)
     test_datagen = ImageDataGenerator(rescale=1./255)
 
-    train_generator = train_datagen.flow_from_directory(train_dir,target_size=[IMAGE_WIDTH,IMAGE_HEIGHT],batch_size=20,class_mode='binary')
+    train_generator = train_datagen.flow_from_directory(train_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
 
-    validation_generator = test_datagen.flow_from_directory(validation_dir,target_size=[IMAGE_WIDTH,IMAGE_HEIGHT],batch_size=20,class_mode='binary')
+    validation_generator = test_datagen.flow_from_directory(validation_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
 
     model = create_model()
     #compile the model
