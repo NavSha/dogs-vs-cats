@@ -14,6 +14,39 @@ TensorFlow
 Keras
 Miniconda
 
+# How to run
+
+Install miniconda from here.
+
+Run the following command
+
+conda update conda
+
+Install dependencies from environment.yml file.
+
+conda env create -f environment.yml
+
+Activate your environment
+
+conda activate tensorflow
+
+
+Link to the training dataset is provided in src/train/README.md
+
+Assuming you have downloaded the dataset pretrained weights, go to src/server and start the server using the following command
+
+python server.py
+
+Open a new temrinal and visit src/test for images and test according to the dataset you loaded by using the following command
+
+curl -X POST -F 'image=@test.jpg'  http://localhost:5000/api/class_pred
+
+For other images, just add that name instead of test.jpg in the command above.
+
+For calculating the Test Accuracy of the model, download the test dataset and then run the command given below. Link to the dataset is provided in src/test/README.md
+
+python test.py
+
 # Contributing
 
 Feel free to clone it and make changes to it. Pull requests are welcome.
