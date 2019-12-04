@@ -73,7 +73,7 @@ Deep Learning for Python Book, Keras Documentation etc.
 
 # Loss and Validation Curves for the Model
 
-------
+![alt text](https://github.com/NavSha/dogs-vs-cats/blob/master/src/pictures/loss_and_accuracy.png)
 
 # Sample Output 
 
