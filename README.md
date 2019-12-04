@@ -8,12 +8,12 @@ In this repo, I've added a model that consists of 4 conv layers and 4 maxpooling
 
 ## Prerequisites
 
-* **Python** 
-* **Numpy**
-* **TensorFlow**
-* **Keras**
-* **OpenCV**
-* **Miniconda**
+* **Python** 3.7.5
+* **Numpy** 1.17.3
+* **TensorFlow** 1.13.1
+* **Keras** 2.2.4
+* **OpenCV** 3.4.7
+* **Miniconda** 4.7.12
 
 ## How to run
 
