@@ -16,7 +16,8 @@ from keras import optimizers
 from keras.preprocessing.image import ImageDataGenerator
 import matplotlib.pyplot as plt
 from keras import backend as K
-from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, TensorBoard
+import datetime
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 IMG_WIDTH, IMG_HEIGHT = 150, 150
@@ -52,49 +53,52 @@ def create_model():
 
 def training():
     # data preprocessing using ImageDataGenerator
-    train_datagen = ImageDataGenerator(rescale=1./255)
-    test_datagen = ImageDataGenerator(rescale=1./255)
+	train_datagen = ImageDataGenerator(rescale=1./255)
+	test_datagen = ImageDataGenerator(rescale=1./255)
+	train_generator = train_datagen.flow_from_directory(train_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
+	validation_generator = test_datagen.flow_from_directory(validation_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
 
-    train_generator = train_datagen.flow_from_directory(train_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
-
-    validation_generator = test_datagen.flow_from_directory(validation_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
-
-    model = create_model()
+	model = create_model()
     #compile the model
-    model.compile(loss='binary_crossentropy', optimizer=optimizers.RMSprop(lr=1e-4),metrics=['acc'])
+	model.compile(loss='binary_crossentropy', optimizer=optimizers.RMSprop(lr=1e-4),metrics=['acc'])
+	checkpointer = ModelCheckpoint(filepath='../../model/cats_and_dogs_small_1.h5', monitor = 'val_loss', verbose = 1, save_best_only=True, mode='auto')
+	stop = EarlyStopping(monitor='val_loss', patience=3, verbose=1, mode='auto',restore_best_weights=True)
 
-    checkpointer = ModelCheckpoint(filepath='cats_and_dogs_small_1.h5', monitor = 'val_loss', verbose = 1, save_best_only=True, mode='auto')
-    stop = EarlyStopping(monitor='val_loss', patience=3, verbose=1, mode='auto',restore_best_weights=True)
+	learning_rate_update = ReduceLROnPlateau(monitor = 'val_loss',factor = 0.1, patience = 3)
+	log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+	tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=0)
 
-    history = model.fit_generator(train_generator, steps_per_epoch=100,epochs=20,validation_data = validation_generator,validation_steps=50, callbacks=[checkpointer, stop])
+	history = model.fit_generator(train_generator, steps_per_epoch=100,epochs=3,validation_data = validation_generator,validation_steps=50, callbacks=[checkpointer, stop, learning_rate_update, tensorboard_callback])
+	model.save('../../model/cats_and_dogs_small_1.h5')
 
-    model.save('cats_and_dogs_small_1.h5')
-
-    model_json = model.to_json()
-    with open('cats_and_dogs_small_1.json', "w") as json_file:
-        json_file.write(model_json)
+	model_json = model.to_json()
+	with open('../../model/cats_and_dogs_small_1.json', "w") as json_file:
+		json_file.write(model_json)
+	return history
 
 def plot_loss_and_accuracy():
 #let's plot the training and validation losses and accuracies
-    acc = history.history['acc']
-    loss = history.history['loss']
-    val_acc = history.history['val_acc']
-    val_loss = history.history['val_loss']
 
-    epochs = range(1,len(acc)+1)
+	history = training()
+	acc = history.history['acc']
+	loss = history.history['loss']
+	val_acc = history.history['val_acc']
+	val_loss = history.history['val_loss']
 
-    plt.plot(epochs, acc, 'bo', label = 'Training acc')
-    plt.plot(epochs,val_acc,'bo',label = 'Validation acc')
-    plt.title('Training and validation accuracy')
-    plt.legend()
-    plt.figure()
+	epochs = range(1,len(acc)+1)
 
-    plt.plot(epochs, loss, 'ro', label = 'Training loss')
-    plt.plot(epochs,val_acc,'ro',label = 'Validation loss')
-    plt.title('Training and validation loss')
-    plt.legend()
-    plt.show()
+	plt.plot(epochs, acc, 'bo', label = 'Training acc')
+	plt.plot(epochs,val_acc,'b',label = 'Validation acc')
+	plt.title('Training and validation accuracy')
+	plt.legend()
+	plt.figure()
+
+	plt.plot(epochs, loss, 'ro', label = 'Training loss')
+	plt.plot(epochs,val_acc,'r',label = 'Validation loss')
+	plt.title('Training and validation loss')
+	plt.legend()
+	plt.show()
 
 if __name__=="__main__":
-    img_channel_type()
-    training()
+	img_channel_type()
+	plot_loss_and_accuracy()
