@@ -20,8 +20,8 @@ BASE_DIR = '/Users/NavSha/Documents/tensorflow-projects/dogs-vs_cats'
 sys.path.append(os.path.abspath("../preprocess"))
 from load import *
 
-if not os.path.exists(os.path.join(BASE_DIR,'uploaded_images/')):
-    os.makedirs(os.path.join(BASE_DIR,'upload_images'))
+#if not os.path.exists(os.path.join(BASE_DIR,'uploaded_images/')):
+#    os.makedirs(os.path.join(BASE_DIR,'upload_images'))
 
 UPLOAD_FOLDER = os.path.join(BASE_DIR,'upload_images')
 ALLOWED_EXTENSIONS = set(['png','jpg','jpeg'])
@@ -48,18 +48,13 @@ def class_predict():
             filename = secure_filename(image.filename)
             image_path = os.path.join(app.config['UPLOAD_FOLDER'])
             image.save(image_path)
-            print (image_path)
             npimg = np.fromfile(image_path,np.uint8)
             image = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
             image = cv2.resize(image,(150,150))
             image = image.reshape(1,150,150,3)
-            print (image.shape)
-            print("image has been read")
 
             with graph.as_default():
-                print (model.predict(image))
-                class_prediction = model.predict(image) #mistake is likely here
-                print("Prediction from model ",class_prediction)
+                class_prediction = model.predict(image)
                 if class_prediction == 1:
                     return jsonify(api_version = '0.1',
                                     id =1,
