@@ -9,13 +9,12 @@ Returns:
     and deployment
 '''
 
-import os,shutil
+import os
 from tensorflow.keras import layers
 from tensorflow.keras import models
 from tensorflow.keras import optimizers
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import matplotlib.pyplot as plt
-from tensorflow.keras import backend as K
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, TensorBoard
 import datetime
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
@@ -30,13 +29,6 @@ base_dir = os.environ.get('CATS_DOGS_DATA_DIR', os.path.join(PROJECT_DIR, 'data'
 train_dir = os.path.join(base_dir, 'train')
 validation_dir = os.path.join(base_dir,'validation')
 test_dir = os.path.join(base_dir,'test')
-
-def img_channel_type():
-    # Pre-preprocessing of image
-    if K.image_data_format() == 'channels_first':
-        input_shape = (3, IMG_WIDTH, IMG_HEIGHT)
-    else:
-        input_shape = (IMG_WIDTH, IMG_HEIGHT, 3)
 
 def create_model():
 # create a model with 3 conv layers and 3 maxpooling layers
@@ -56,7 +48,15 @@ def create_model():
 
 def training():
     # data preprocessing using ImageDataGenerator
-	train_datagen = ImageDataGenerator(rescale=1./255)
+	train_datagen = ImageDataGenerator(
+		rescale=1./255,
+		rotation_range=40,
+		width_shift_range=0.2,
+		height_shift_range=0.2,
+		shear_range=0.2,
+		zoom_range=0.2,
+		horizontal_flip=True,
+		fill_mode='nearest')
 	test_datagen = ImageDataGenerator(rescale=1./255)
 	train_generator = train_datagen.flow_from_directory(train_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
 	validation_generator = test_datagen.flow_from_directory(validation_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
@@ -103,5 +103,4 @@ def plot_loss_and_accuracy():
 	plt.show()
 
 if __name__=="__main__":
-	img_channel_type()
 	plot_loss_and_accuracy()

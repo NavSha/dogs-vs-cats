@@ -11,7 +11,6 @@ from werkzeug.utils import secure_filename
 import numpy as np
 import cv2
 import tensorflow.keras.models
-import base64
 import sys
 import os
 
@@ -21,10 +20,8 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 sys.path.append(os.path.join(SCRIPT_DIR, "../preprocess"))
 from load import *
 
-#if not os.path.exists(os.path.join(PROJECT_DIR,'uploaded_images/')):
-#    os.makedirs(os.path.join(PROJECT_DIR,'upload_images'))
-
 UPLOAD_FOLDER = os.path.join(PROJECT_DIR,'upload_images')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 ALLOWED_EXTENSIONS = set(['png','jpg','jpeg'])
 
 app = Flask(__name__)
@@ -51,7 +48,7 @@ def class_predict():
         image = request.files['image']
         if image and allowed_file(image.filename):
             filename = secure_filename(image.filename)
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'])
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             image.save(image_path)
             npimg = np.fromfile(image_path,np.uint8)
             image = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
