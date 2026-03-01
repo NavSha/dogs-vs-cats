@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dogs vs Cats Classifier</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .container { max-width: 480px; width: 100%; padding: 2rem; }
+  h1 { text-align: center; margin-bottom: 0.5rem; font-size: 1.8rem; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 2rem; font-size: 0.95rem; }
+  .dropzone {
+    border: 2px dashed #ccc; border-radius: 12px; padding: 3rem 1.5rem;
+    text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+    background: #fff;
+  }
+  .dropzone.dragover { border-color: #4a90d9; background: #eef4fb; }
+  .dropzone p { color: #888; font-size: 1rem; }
+  .dropzone p span { color: #4a90d9; text-decoration: underline; }
+  .preview { margin-top: 1.5rem; text-align: center; }
+  .preview img { max-width: 100%; max-height: 250px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .result {
+    margin-top: 1.5rem; padding: 1.2rem; border-radius: 10px;
+    text-align: center; font-size: 1.4rem; font-weight: 600;
+  }
+  .result.dog { background: #e8f5e9; color: #2e7d32; }
+  .result.cat { background: #fff3e0; color: #e65100; }
+  .result .emoji { font-size: 2rem; display: block; margin-bottom: 0.4rem; }
+  .confidence { font-size: 0.9rem; font-weight: 400; color: #666; margin-top: 0.3rem; }
+  .spinner { margin-top: 1.5rem; text-align: center; color: #888; }
+  .error { margin-top: 1rem; text-align: center; color: #d32f2f; font-size: 0.9rem; }
+  input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Dogs vs Cats</h1>
+  <p class="subtitle">Drop an image to classify it</p>
+
+  <div class="dropzone" id="dropzone">
+    <p>Drag &amp; drop an image here, or <span>browse</span></p>
+    <input type="file" id="fileInput" accept="image/png, image/jpeg">
+  </div>
+
+  <div class="preview" id="preview" hidden>
+    <img id="previewImg" alt="Uploaded image">
+  </div>
+
+  <div class="spinner" id="spinner" hidden>Classifying...</div>
+  <div class="error" id="error" hidden></div>
+  <div class="result" id="result" hidden>
+    <span class="emoji" id="emoji"></span>
+    <span id="label"></span>
+    <div class="confidence" id="confidence"></div>
+  </div>
+</div>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const preview = document.getElementById('preview');
+const previewImg = document.getElementById('previewImg');
+const spinner = document.getElementById('spinner');
+const errorEl = document.getElementById('error');
+const resultEl = document.getElementById('result');
+const emoji = document.getElementById('emoji');
+const label = document.getElementById('label');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+function handleFile(file) {
+  if (!file.type.match(/^image\/(jpeg|png)$/)) {
+    showError('Please upload a JPG or PNG image.');
+    return;
+  }
+  // show preview
+  const reader = new FileReader();
+  reader.onload = e => { previewImg.src = e.target.result; preview.hidden = false; };
+  reader.readAsDataURL(file);
+
+  // reset state
+  resultEl.hidden = true;
+  errorEl.hidden = true;
+  spinner.hidden = false;
+
+  // upload
+  const form = new FormData();
+  form.append('image', file);
+  fetch('/api/class_pred', { method: 'POST', body: form })
+    .then(r => r.json())
+    .then(data => {
+      spinner.hidden = true;
+      if (data.error) { showError(data.error); return; }
+      const isDog = data.type === 'Dog';
+      emoji.textContent = isDog ? '🐶' : '🐱';
+      label.textContent = isDog ? 'Dog' : 'Cat';
+      const pct = Math.round(data.confidence * 100);
+      document.getElementById('confidence').textContent = pct + '% confidence';
+      resultEl.className = 'result ' + (isDog ? 'dog' : 'cat');
+      resultEl.hidden = false;
+    })
+    .catch(() => { spinner.hidden = true; showError('Something went wrong. Is the server running?'); });
+}
+
+function showError(msg) { errorEl.textContent = msg; errorEl.hidden = false; }
+</script>
+</body>
+</html>

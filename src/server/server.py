@@ -36,6 +36,10 @@ def allowed_file(filename):
     return '.' in filename and \
         filename.rsplit('.',1)[1].lower() in ALLOWED_EXTENSIONS
 
+@app.route("/")
+def index():
+    return render_template("index.html")
+
 @app.route("/api/class_pred", methods = ["GET","POST"])
 def class_predict():
     if request.method == 'POST':
@@ -52,24 +56,18 @@ def class_predict():
             npimg = np.fromfile(image_path,np.uint8)
             image = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
             image = cv2.resize(image,(150,150))
-            image = image.reshape(1,150,150,3)
+            image = image.reshape(1,150,150,3) / 255.0
 
-            class_prediction = model.predict(image)
-            if class_prediction == 1:
-                return jsonify(api_version = '0.1',
-                                id =1,
-                                model_name = "Dags vs cats classifier",
-                                name = filename,
-                                status = 200,
-                                type = 'Dog'), 200
-
-            else:
-                return jsonify(api_version='0.1',
-                                id = 0,
-                                model_name = "Dogs vs cats classifier",
-                                name = filename,
-                                status = 200,
-                                type = 'Cat'), 400
+            score = float(model.predict(image)[0][0])
+            is_dog = score >= 0.5
+            confidence = score if is_dog else 1 - score
+            return jsonify(api_version = '0.1',
+                            id = 1 if is_dog else 0,
+                            model_name = "Dogs vs cats classifier",
+                            name = filename,
+                            status = 200,
+                            type = 'Dog' if is_dog else 'Cat',
+                            confidence = round(confidence, 4)), 200
 
         else:
             return jsonify(api_version='0.1',
