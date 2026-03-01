@@ -8,33 +8,19 @@ In this repo, I've added a model that consists of 4 conv layers and 4 maxpooling
 
 ## Prerequisites
 
-* **Python** 3.7.5
-* **Numpy** 1.17.3
-* **TensorFlow** 1.13.1
-* **Keras** 2.2.4
-* **OpenCV** 3.4.7
-* **Miniconda** 4.7.12
+* **Python** 3.9+
+* **TensorFlow** 2.14+
+* **OpenCV** 4.8+
+* **Flask** 3.0+
 
 ## How to run
 
-Install miniconda from [here](https://docs.conda.io/en/latest/miniconda.html).
-
-* Run the following command
+* Create a virtual environment and install dependencies
 
 ```
-conda update conda
-```
-
-* Install dependencies from `environment.yml` file.
-
-```
-conda env create -f environment.yml
-```
-
-* Activate your environment
-
-```
-conda activate tensorflow
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 Link to the training dataset is provided in `src/train/README.md`

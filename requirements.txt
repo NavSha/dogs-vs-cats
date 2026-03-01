@@ -1,0 +1,9 @@
+tensorflow>=2.14,<2.16
+opencv-python>=4.8
+flask>=3.0
+matplotlib
+numpy<2.0
+h5py
+pandas
+scipy
+Pillow

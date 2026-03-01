@@ -10,26 +10,27 @@ from flask import Flask, render_template, request,jsonify
 from werkzeug.utils import secure_filename
 import numpy as np
 import cv2
-import keras.models
+import tensorflow.keras.models
 import base64
 import sys
 import os
 
-BASE_DIR = '/Users/NavSha/Documents/tensorflow-projects/dogs-vs_cats'
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 
-sys.path.append(os.path.abspath("../preprocess"))
+sys.path.append(os.path.join(SCRIPT_DIR, "../preprocess"))
 from load import *
 
-#if not os.path.exists(os.path.join(BASE_DIR,'uploaded_images/')):
-#    os.makedirs(os.path.join(BASE_DIR,'upload_images'))
+#if not os.path.exists(os.path.join(PROJECT_DIR,'uploaded_images/')):
+#    os.makedirs(os.path.join(PROJECT_DIR,'upload_images'))
 
-UPLOAD_FOLDER = os.path.join(BASE_DIR,'upload_images')
+UPLOAD_FOLDER = os.path.join(PROJECT_DIR,'upload_images')
 ALLOWED_EXTENSIONS = set(['png','jpg','jpeg'])
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-global model, graph
-model, graph = init()
+global model
+model = init()
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -53,23 +54,22 @@ def class_predict():
             image = cv2.resize(image,(150,150))
             image = image.reshape(1,150,150,3)
 
-            with graph.as_default():
-                class_prediction = model.predict(image)
-                if class_prediction == 1:
-                    return jsonify(api_version = '0.1',
-                                    id =1,
-                                    model_name = "Dags vs cats classifier",
-                                    name = filename,
-                                    status = 200,
-                                    type = 'Dog'), 200
+            class_prediction = model.predict(image)
+            if class_prediction == 1:
+                return jsonify(api_version = '0.1',
+                                id =1,
+                                model_name = "Dags vs cats classifier",
+                                name = filename,
+                                status = 200,
+                                type = 'Dog'), 200
 
-                else:
-                    return jsonify(api_version='0.1',
-                                    id = 0,
-                                    model_name = "Dogs vs cats classifier",
-                                    name = filename,
-                                    status = 200,
-                                    type = 'Cat'), 400
+            else:
+                return jsonify(api_version='0.1',
+                                id = 0,
+                                model_name = "Dogs vs cats classifier",
+                                name = filename,
+                                status = 200,
+                                type = 'Cat'), 400
 
         else:
             return jsonify(api_version='0.1',
