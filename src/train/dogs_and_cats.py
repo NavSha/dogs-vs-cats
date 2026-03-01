@@ -1,53 +1,59 @@
 '''
 Summary:
-	Loads the dataset and trains the classifier
-    model on dogs and cats images
+	Trains a dogs vs cats classifier using MobileNetV2
+	transfer learning (two-phase: frozen base → fine-tune).
 
 Returns:
-	Returns JSON as well as H5 file for the model
-    which can be used by server for classification
-    and deployment
+	Saves model (.h5 + .json), architecture diagram, and
+	training curves to the model/ directory.
 '''
 
 import os
-from tensorflow.keras import layers
-from tensorflow.keras import models
-from tensorflow.keras import optimizers
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-import matplotlib.pyplot as plt
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, TensorBoard
 import datetime
-os.environ['KMP_DUPLICATE_LIB_OK']='True'
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from tensorflow.keras import layers, models, optimizers
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, TensorBoard
+from tensorflow.keras.utils import plot_model
+
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 IMG_WIDTH, IMG_HEIGHT = 150, 150
+BATCH_SIZE = 32
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+MODEL_DIR = os.path.join(PROJECT_DIR, 'model')
 
-#set up base, training, validation and test directories
 base_dir = os.environ.get('CATS_DOGS_DATA_DIR', os.path.join(PROJECT_DIR, 'data'))
 train_dir = os.path.join(base_dir, 'train')
-validation_dir = os.path.join(base_dir,'validation')
-test_dir = os.path.join(base_dir,'test')
+validation_dir = os.path.join(base_dir, 'validation')
+test_dir = os.path.join(base_dir, 'test')
 
-def create_model():
-# create a model with 3 conv layers and 3 maxpooling layers
-    model = models.Sequential()
-    model.add(layers.Conv2D(32, (3,3), activation = 'relu', input_shape=(150,150,3)))
-    model.add(layers.MaxPooling2D((2,2)))
-    model.add(layers.Conv2D(64, (3,3), activation = 'relu'))
-    model.add(layers.MaxPooling2D((2,2)))
-    model.add(layers.Conv2D(128,(3,3), activation = 'relu'))
-    model.add(layers.MaxPooling2D((2,2)))
-    model.add(layers.Conv2D(128,(3,3),activation = 'relu'))
-    model.add(layers.MaxPooling2D((2,2)))
-    model.add(layers.Flatten())
-    model.add(layers.Dense(512, activation = 'relu'))
-    model.add(layers.Dense(1,activation = 'sigmoid'))
-    return model
+MODEL_PATH = os.path.join(MODEL_DIR, 'cats_and_dogs_mobilenet.h5')
 
-def training():
-    # data preprocessing using ImageDataGenerator
+
+def create_transfer_model():
+	'''Build MobileNetV2 with custom classification head.'''
+	base_model = MobileNetV2(weights='imagenet', include_top=False,
+							 input_shape=(IMG_WIDTH, IMG_HEIGHT, 3))
+	base_model.trainable = False
+
+	model = models.Sequential([
+		base_model,
+		layers.GlobalAveragePooling2D(),
+		layers.Dense(256, activation='relu'),
+		layers.Dropout(0.5),
+		layers.Dense(1, activation='sigmoid')
+	])
+	return model
+
+
+def get_data_generators():
+	'''Set up augmented training and plain validation generators.'''
 	train_datagen = ImageDataGenerator(
 		rescale=1./255,
 		rotation_range=40,
@@ -57,50 +63,138 @@ def training():
 		zoom_range=0.2,
 		horizontal_flip=True,
 		fill_mode='nearest')
-	test_datagen = ImageDataGenerator(rescale=1./255)
-	train_generator = train_datagen.flow_from_directory(train_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
-	validation_generator = test_datagen.flow_from_directory(validation_dir,target_size=[IMG_WIDTH,IMG_HEIGHT],batch_size=20,class_mode='binary')
+	val_datagen = ImageDataGenerator(rescale=1./255)
 
-	model = create_model()
-    #compile the model
-	model.compile(loss='binary_crossentropy', optimizer=optimizers.RMSprop(learning_rate=1e-4),metrics=['accuracy'])
-	checkpointer = ModelCheckpoint(filepath=os.path.join(PROJECT_DIR, 'model/cats_and_dogs_small_1.h5'), monitor = 'val_loss', verbose = 1, save_best_only=True, mode='auto')
-	stop = EarlyStopping(monitor='val_loss', patience=3, verbose=1, mode='auto',restore_best_weights=True)
+	train_gen = train_datagen.flow_from_directory(
+		train_dir, target_size=(IMG_WIDTH, IMG_HEIGHT),
+		batch_size=BATCH_SIZE, class_mode='binary')
+	val_gen = val_datagen.flow_from_directory(
+		validation_dir, target_size=(IMG_WIDTH, IMG_HEIGHT),
+		batch_size=BATCH_SIZE, class_mode='binary')
 
-	learning_rate_update = ReduceLROnPlateau(monitor = 'val_loss',factor = 0.1, patience = 3)
+	return train_gen, val_gen
+
+
+def training():
+	train_gen, val_gen = get_data_generators()
+	steps_per_epoch = train_gen.samples // BATCH_SIZE
+	validation_steps = val_gen.samples // BATCH_SIZE
+
+	model = create_transfer_model()
+
+	# --- Save architecture diagram ---
+	plot_model(model, to_file=os.path.join(MODEL_DIR, 'architecture.png'),
+			   show_shapes=True, show_layer_names=True)
+	print("Architecture diagram saved to model/architecture.png")
+
+	# --- Phase 1: Feature extraction (frozen base) ---
+	print("\n=== Phase 1: Feature extraction (frozen base) ===")
+	model.compile(
+		loss='binary_crossentropy',
+		optimizer=optimizers.RMSprop(learning_rate=1e-4),
+		metrics=['accuracy'])
+
 	log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-	tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=0)
+	callbacks_p1 = [
+		ModelCheckpoint(filepath=MODEL_PATH, monitor='val_loss',
+						verbose=1, save_best_only=True),
+		EarlyStopping(monitor='val_loss', patience=5, verbose=1,
+					  restore_best_weights=True),
+		ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3),
+		TensorBoard(log_dir=log_dir, histogram_freq=0),
+	]
 
-	history = model.fit(train_generator, steps_per_epoch=100,epochs=3,validation_data = validation_generator,validation_steps=50, callbacks=[checkpointer, stop, learning_rate_update, tensorboard_callback])
-	model.save(os.path.join(PROJECT_DIR, 'model/cats_and_dogs_small_1.h5'))
+	history_p1 = model.fit(
+		train_gen, steps_per_epoch=steps_per_epoch, epochs=30,
+		validation_data=val_gen, validation_steps=validation_steps,
+		callbacks=callbacks_p1)
 
+	# Save model after Phase 1
+	model.save(MODEL_PATH)
 	model_json = model.to_json()
-	with open(os.path.join(PROJECT_DIR, 'model/cats_and_dogs_small_1.json'), "w") as json_file:
-		json_file.write(model_json)
-	return history
+	with open(os.path.join(MODEL_DIR, 'cats_and_dogs_mobilenet.json'), "w") as f:
+		f.write(model_json)
+	print(f"\nPhase 1 model saved to {MODEL_PATH}")
 
-def plot_loss_and_accuracy():
-#let's plot the training and validation losses and accuracies
+	# --- Phase 2: Fine-tuning last 30 layers ---
+	history_p2 = None
+	try:
+		print("\n=== Phase 2: Fine-tuning last 30 layers ===")
+		base_model = model.layers[0]
+		base_model.trainable = True
+		for layer in base_model.layers[:-30]:
+			layer.trainable = False
 
-	history = training()
-	acc = history.history['accuracy']
-	loss = history.history['loss']
-	val_acc = history.history['val_accuracy']
-	val_loss = history.history['val_loss']
+		model.compile(
+			loss='binary_crossentropy',
+			optimizer=optimizers.RMSprop(learning_rate=1e-5),
+			metrics=['accuracy'])
 
-	epochs = range(1,len(acc)+1)
+		log_dir_ft = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_finetune"
+		callbacks_p2 = [
+			ModelCheckpoint(filepath=MODEL_PATH, monitor='val_loss',
+							verbose=1, save_best_only=True),
+			EarlyStopping(monitor='val_loss', patience=5, verbose=1,
+						  restore_best_weights=True),
+			ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3),
+			TensorBoard(log_dir=log_dir_ft, histogram_freq=0),
+		]
 
-	plt.plot(epochs, acc, 'bo', label = 'Training acc')
-	plt.plot(epochs,val_acc,'b',label = 'Validation acc')
-	plt.title('Training and validation accuracy')
-	plt.legend()
-	plt.figure()
+		history_p2 = model.fit(
+			train_gen, steps_per_epoch=steps_per_epoch, epochs=20,
+			validation_data=val_gen, validation_steps=validation_steps,
+			callbacks=callbacks_p2)
 
-	plt.plot(epochs, loss, 'ro', label = 'Training loss')
-	plt.plot(epochs,val_loss,'r',label = 'Validation loss')
-	plt.title('Training and validation loss')
-	plt.legend()
-	plt.show()
+		model.save(MODEL_PATH)
+		print(f"\nFine-tuned model saved to {MODEL_PATH}")
+	except Exception as e:
+		print(f"\nPhase 2 failed ({e}), using Phase 1 model.")
 
-if __name__=="__main__":
-	plot_loss_and_accuracy()
+	return history_p1, history_p2
+
+
+def plot_loss_and_accuracy(history_p1, history_p2=None):
+	'''Plot training curves for both phases (or just Phase 1) and save to file.'''
+	acc = history_p1.history['accuracy']
+	val_acc = history_p1.history['val_accuracy']
+	loss = history_p1.history['loss']
+	val_loss = history_p1.history['val_loss']
+	phase1_epochs = len(acc)
+
+	if history_p2 is not None:
+		acc += history_p2.history['accuracy']
+		val_acc += history_p2.history['val_accuracy']
+		loss += history_p2.history['loss']
+		val_loss += history_p2.history['val_loss']
+
+	epochs = range(1, len(acc) + 1)
+
+	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+	ax1.plot(epochs, acc, 'bo-', label='Training acc')
+	ax1.plot(epochs, val_acc, 'b-', label='Validation acc')
+	if history_p2 is not None:
+		ax1.axvline(x=phase1_epochs, color='gray', linestyle='--', label='Fine-tune start')
+	ax1.set_title('Training and Validation Accuracy')
+	ax1.set_xlabel('Epoch')
+	ax1.set_ylabel('Accuracy')
+	ax1.legend()
+
+	ax2.plot(epochs, loss, 'ro-', label='Training loss')
+	ax2.plot(epochs, val_loss, 'r-', label='Validation loss')
+	if history_p2 is not None:
+		ax2.axvline(x=phase1_epochs, color='gray', linestyle='--', label='Fine-tune start')
+	ax2.set_title('Training and Validation Loss')
+	ax2.set_xlabel('Epoch')
+	ax2.set_ylabel('Loss')
+	ax2.legend()
+
+	plt.tight_layout()
+	save_path = os.path.join(MODEL_DIR, 'training_curves.png')
+	plt.savefig(save_path, dpi=150)
+	print(f"Training curves saved to {save_path}")
+
+
+if __name__ == "__main__":
+	history_p1, history_p2 = training()
+	plot_loss_and_accuracy(history_p1, history_p2)

@@ -7,3 +7,5 @@ h5py
 pandas
 scipy
 Pillow
+pydot
+graphviz
