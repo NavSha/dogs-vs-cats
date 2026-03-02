@@ -6,8 +6,8 @@ A deep learning project for binary image classification (dogs vs cats) using **M
 
 The model uses **MobileNetV2** pretrained on ImageNet with a custom classification head, trained in two phases:
 
-1. **Feature extraction** (30 epochs) — MobileNetV2 base frozen, only the classification head trains
-2. **Fine-tuning** (8 epochs) — Last 30 MobileNetV2 layers unfrozen with 10x lower learning rate
+1. **Feature extraction** (15 epochs) — MobileNetV2 base frozen, only the classification head trains
+2. **Fine-tuning** (20 epochs) — Last 30 MobileNetV2 layers unfrozen with 10x lower learning rate
 
 MobileNetV2 → GlobalAveragePooling2D → Dense(256, relu) → Dropout(0.5) → Dense(1, sigmoid)
 
