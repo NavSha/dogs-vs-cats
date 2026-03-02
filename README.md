@@ -1,22 +1,25 @@
 ## Binary Classification using CNNs: Dogs vs Cats
 
-A deep learning project for binary image classification (dogs vs cats) using **MobileNetV2 transfer learning**, achieving **96.9% test accuracy**.
+A deep learning project for binary image classification (dogs vs cats) using **MobileNetV2 transfer learning** with two-phase training, achieving **97.0% validation accuracy**.
 
 ### Model
 
-The current model uses **MobileNetV2** pretrained on ImageNet as a feature extractor, with a custom classification head:
+The model uses **MobileNetV2** pretrained on ImageNet with a custom classification head, trained in two phases:
 
-MobileNetV2 (frozen) → GlobalAveragePooling2D → Dense(256, relu) → Dropout(0.5) → Dense(1, sigmoid)
+1. **Feature extraction** (30 epochs) — MobileNetV2 base frozen, only the classification head trains
+2. **Fine-tuning** (8 epochs) — Last 30 MobileNetV2 layers unfrozen with 10x lower learning rate
+
+MobileNetV2 → GlobalAveragePooling2D → Dense(256, relu) → Dropout(0.5) → Dense(1, sigmoid)
 
 Trained on 20,000 images (80/10/10 split) with data augmentation.
 
-| Metric | Value |
-|---|---|
-| Test accuracy | **96.9%** |
-| Validation accuracy | 96.5% |
-| Test loss | 0.0808 |
-| Parameters | 2.6M |
-| Model size | 17MB |
+| Metric | Phase 1 (frozen base) | Phase 2 (fine-tuned) |
+|---|---|---|
+| Validation accuracy | 96.5% | **97.0%** |
+| Test accuracy | 96.9% | 96.1% |
+| Best val_loss | 0.0849 | **0.0765** |
+| Parameters | 2.6M (330K trainable) | 2.6M (1.6M trainable) |
+| Model size | 17MB | 17MB |
 
 ### Architecture
 
