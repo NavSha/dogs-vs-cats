@@ -8,7 +8,7 @@ A deep learning project for binary image classification (dogs vs cats) using **M
 
 [![How a Machine Learns to See](docs/screenshots/hero.png)](https://navsha.github.io/dogs-vs-cats/)
 
-This same trained model also powers a scroll-driven, jargon-free explainer that turns the classifier into a teaching instrument for non-technical readers. The model is converted to **TensorFlow.js** and runs **entirely in the browser** — no server, no API. Upload your own photo and watch it flow through five chapters:
+This same trained model also powers a jargon-free explainer that turns the classifier into a teaching instrument for non-technical readers. It's a **dark, scroll-driven exhibit** (a light editorial version lives at [`/editorial.html`](https://navsha.github.io/dogs-vs-cats/editorial.html)). The model is converted to **TensorFlow.js** and runs **entirely in the browser** — no server, no API. Upload your own photo and watch it flow through five chapters:
 
 1. **A photo is just numbers** — your image shrunk to the 150×150 grid the model receives; hover any pixel to read its RGB values.
 2. **The machine looks for patterns** — three real intermediate layers (edges → textures → patterns) visualised live on your photo.
