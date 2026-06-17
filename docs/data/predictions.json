@@ -1,0 +1,24 @@
+{
+  "img_size": 150,
+  "convention": "1.0=Dog, 0.0=Cat",
+  "predictions": [
+    {
+      "file": "1510.jpg",
+      "score": 1e-06,
+      "label": "Cat",
+      "confidence": 1.0
+    },
+    {
+      "file": "1513.jpg",
+      "score": 0.999003,
+      "label": "Dog",
+      "confidence": 0.999
+    },
+    {
+      "file": "1520.jpg",
+      "score": 0.000404,
+      "label": "Cat",
+      "confidence": 0.9996
+    }
+  ]
+}

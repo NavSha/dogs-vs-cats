@@ -1,4 +1,4 @@
-data/
+/data/
 .venv/
 .venv-tfjs/
 __pycache__/
