@@ -15,9 +15,13 @@ Summary:
   the stack the model was trained on.
 
 Outputs:
-  model/activation_model.h5         (intermediate -> converted to web/model-activations/)
-  web/data/predictions.json
-  web/data/training_history.json
+  model/activation_model.h5         (intermediate -> converted to docs/model-activations/)
+  docs/data/predictions.json
+  docs/data/training_history.json
+
+The TF.js model conversions are run separately (see README), e.g.:
+  tensorflowjs_converter --input_format=keras model/cats_and_dogs_mobilenet.h5 docs/model
+  tensorflowjs_converter --input_format=keras model/activation_model.h5 docs/model-activations
 '''
 
 import os
@@ -31,7 +35,7 @@ from tensorflow.keras.models import Model, load_model
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 MODEL_DIR = os.path.join(PROJECT_DIR, 'model')
-WEB_DATA_DIR = os.path.join(PROJECT_DIR, 'web', 'data')
+WEB_DATA_DIR = os.path.join(PROJECT_DIR, 'docs', 'data')
 TEST_DIR = os.path.join(PROJECT_DIR, 'src', 'test')
 LOGS_DIR = os.path.join(PROJECT_DIR, 'logs', 'fit')
 
