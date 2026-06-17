@@ -2,6 +2,33 @@
 
 A deep learning project for binary image classification (dogs vs cats) using **MobileNetV2 transfer learning** with two-phase training, achieving **97.0% validation accuracy**.
 
+## 🔍 Interactive explainer — "How a Machine Learns to See"
+
+**▶︎ Live: https://navsha.github.io/dogs-vs-cats/**
+
+[![How a Machine Learns to See](docs/screenshots/hero.png)](https://navsha.github.io/dogs-vs-cats/)
+
+This same trained model also powers a scroll-driven, jargon-free explainer that turns the classifier into a teaching instrument for non-technical readers. The model is converted to **TensorFlow.js** and runs **entirely in the browser** — no server, no API. Upload your own photo and watch it flow through five chapters:
+
+1. **A photo is just numbers** — your image shrunk to the 150×150 grid the model receives; hover any pixel to read its RGB values.
+2. **The machine looks for patterns** — three real intermediate layers (edges → textures → patterns) visualised live on your photo.
+3. **Where is it looking?** — an occlusion-sensitivity attention map (slide a patch, measure the confidence drop) plus a plain-English readout.
+4. **How did it learn?** — the *actual* training run narrated as a story, drawn from the real TensorBoard logs (the climb, the plateau, the fine-tuning jump to 97%, the early stop).
+5. **Break it** — feed it a fox, a car, your face, or pure TV static and watch it answer with confident nonsense — the lesson every PM needs about AI's limits.
+
+The explainer is a self-contained static site in [`docs/`](docs/). To build its assets from the trained model:
+
+```
+source .venv-tfjs/bin/activate          # an env with tensorflowjs (see below)
+python src/export/export_web_assets.py   # activation sub-model + training/prediction JSON
+tensorflowjs_converter --input_format=keras model/cats_and_dogs_mobilenet.h5 docs/model
+tensorflowjs_converter --input_format=keras model/activation_model.h5        docs/model-activations
+```
+
+> Note: `tensorflowjs` pulls a TF/Keras stack that can clash with the training env, so install it in a **separate** venv pinned to the training versions: `python3 -m venv .venv-tfjs && .venv-tfjs/bin/pip install "tensorflow==2.15.1" "tensorflowjs==4.17.0"`.
+
+Preview locally with any static server: `cd docs && python3 -m http.server 8000` → http://localhost:8000.
+
 ### Model
 
 The model uses **MobileNetV2** pretrained on ImageNet with a custom classification head, trained in two phases:
