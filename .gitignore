@@ -1,8 +1,10 @@
 data/
 .venv/
+.venv-tfjs/
 __pycache__/
 *.pyc
 .DS_Store
 .ipynb_checkpoints/
 logs/
 upload_images/
+.gstack/

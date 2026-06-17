@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How a Machine Learns to See — an interactive explainer</title>
+  <meta name="description" content="Upload a photo and watch a real image-recognition model take it apart, layer by layer. A hands-on, jargon-free tour of how machines learn to see — built around a working dogs-vs-cats classifier running entirely in your browser.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&family=Newsreader:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles/shared.css?v=1">
+
+  <!-- TensorFlow.js (matches the 4.x converter the model was exported with).
+       The library loads up front; the model weights are fetched lazily on first use. -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+
+  <style>
+    /* ====================================================================
+       Page-specific styles for "How a Machine Learns to See"
+       ==================================================================== */
+
+    /* Hero canvas backdrop */
+    .article-hero { background: var(--accent-vision-gradient); }
+
+    /* --- Specimen picker (the one photo that flows through every chapter) --- */
+    .specimen {
+      max-width: var(--content-width);
+      margin: var(--space-12) auto 0;
+      padding: 0 var(--page-padding);
+    }
+    .specimen__card {
+      display: flex;
+      gap: var(--space-6);
+      align-items: center;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--widget-radius);
+      padding: var(--space-6);
+      flex-wrap: wrap;
+    }
+    .specimen__thumb {
+      width: 120px;
+      height: 120px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: var(--color-border-light);
+      flex-shrink: 0;
+      image-rendering: auto;
+    }
+    .specimen__body { flex: 1; min-width: 220px; }
+    .specimen__verdict {
+      font-family: var(--font-serif);
+      font-size: var(--text-lg);
+      font-weight: 600;
+      margin-bottom: var(--space-1);
+      min-height: 1.6em;
+    }
+    .specimen__verdict .v-pct { color: var(--accent-vision); }
+    .specimen__hint {
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-4);
+    }
+    .specimen__controls { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+    .chip {
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      padding: var(--space-2) var(--space-4);
+      border-radius: 999px;
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-text);
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--ease-out);
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .chip:hover { border-color: var(--accent-vision); color: var(--accent-vision); }
+    .chip--active { background: var(--accent-vision); border-color: var(--accent-vision); color: #fff; }
+    .chip input[type=file] { display: none; }
+
+    /* --- Definition term (dotted underline, tooltip-ish) --- */
+    .term {
+      border-bottom: 2px dotted var(--accent-vision);
+      cursor: help;
+      font-style: normal;
+    }
+
+    /* --- Chapter scaffolding --- */
+    .chapter-tag {
+      font-family: var(--font-sans);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent-vision);
+    }
+
+    /* --- Chapter 1: pixels --- */
+    .px-stage { display: flex; gap: var(--space-6); flex-wrap: wrap; align-items: flex-start; }
+    .px-canvas-wrap { position: relative; flex: 1; min-width: 260px; }
+    .px-canvas {
+      width: 100%; max-width: 340px; aspect-ratio: 1; display: block;
+      border-radius: 8px; border: 1px solid var(--color-border);
+      image-rendering: pixelated; cursor: crosshair; background: #fff;
+    }
+    .px-readout {
+      flex: 1; min-width: 220px;
+      font-family: var(--font-sans); font-size: var(--text-sm);
+    }
+    .px-swatch {
+      width: 64px; height: 64px; border-radius: 8px; border: 1px solid var(--color-border);
+      display: inline-block; vertical-align: middle; margin-right: var(--space-4);
+    }
+    .px-rgb {
+      font-family: var(--font-mono); font-size: var(--text-base);
+      display: inline-block; vertical-align: middle;
+    }
+    .px-rgb .r { color: #DC2626; } .px-rgb .g { color: #059669; } .px-rgb .b { color: #2563EB; }
+    .px-coords { color: var(--color-text-secondary); margin-top: var(--space-2); }
+    .px-grid-note { margin-top: var(--space-4); color: var(--color-text-secondary); }
+
+    /* --- Chapter 2: activations --- */
+    .act-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-6); }
+    .act-panel {
+      background: var(--color-surface); border: 1px solid var(--color-border);
+      border-radius: 10px; padding: var(--space-4);
+    }
+    .act-panel__name { font-family: var(--font-serif); font-weight: 600; font-size: var(--text-base); }
+    .act-panel__caption { font-family: var(--font-sans); font-size: var(--text-xs); color: var(--color-text-secondary); margin: 2px 0 var(--space-3); line-height: 1.4; }
+    .act-thumbs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+    .act-thumb {
+      width: 100%; aspect-ratio: 1; border-radius: 6px; display: block;
+      background: #0b1320; image-rendering: pixelated;
+    }
+    .act-stagelabel { display: flex; justify-content: space-between; font-family: var(--font-sans); font-size: var(--text-xs); color: var(--color-text-secondary); margin-bottom: var(--space-4); }
+    .act-stagelabel span:nth-child(2) { opacity: 0.5; }
+    @media (max-width: 620px) {
+      .act-grid { grid-template-columns: 1fr; }
+    }
+
+    /* --- Chapter 3: occlusion / attention --- */
+    .cam-stage { display: flex; gap: var(--space-6); flex-wrap: wrap; align-items: flex-start; }
+    .cam-canvas-wrap { position: relative; width: 300px; max-width: 100%; flex-shrink: 0; }
+    .cam-canvas-wrap canvas {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      border-radius: 8px; border: 1px solid var(--color-border);
+    }
+    .cam-canvas-wrap { aspect-ratio: 1; }
+    .cam-readout { flex: 1; min-width: 220px; font-family: var(--font-sans); font-size: var(--text-sm); }
+    .cam-verdict { font-family: var(--font-serif); font-size: var(--text-lg); font-weight: 600; margin-bottom: var(--space-2); }
+    .cam-bar { height: 8px; border-radius: 4px; background: var(--color-border-light); overflow: hidden; margin: var(--space-2) 0 var(--space-4); }
+    .cam-bar__fill { height: 100%; background: var(--accent-vision); width: 0; transition: width var(--duration-slow) var(--ease-out); }
+    .cam-progress { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); }
+
+    /* --- Chapter 4: training curves --- */
+    .train-chart-wrap { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 10px; padding: var(--space-4); }
+    .train-canvas { width: 100%; height: auto; display: block; }
+    .train-legend { display: flex; gap: var(--space-6); flex-wrap: wrap; font-family: var(--font-sans); font-size: var(--text-sm); margin-top: var(--space-3); }
+    .train-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .train-legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+    .train-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--space-4); margin-top: var(--space-6); }
+    .train-stat { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; padding: var(--space-4); text-align: center; }
+    .train-stat__num { font-family: var(--font-serif); font-size: var(--text-2xl); font-weight: 600; color: var(--accent-vision); }
+    .train-stat__lab { font-family: var(--font-sans); font-size: var(--text-xs); color: var(--color-text-secondary); }
+
+    /* --- Chapter 5: break it --- */
+    .break-stage { display: flex; gap: var(--space-6); flex-wrap: wrap; align-items: flex-start; }
+    .break-thumb { width: 160px; height: 160px; border-radius: 10px; object-fit: cover; background: var(--color-border-light); flex-shrink: 0; }
+    .break-body { flex: 1; min-width: 220px; }
+    .break-verdict { font-family: var(--font-serif); font-size: var(--text-xl); font-weight: 600; margin-bottom: var(--space-2); min-height: 1.5em; }
+    .break-suggestions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-4); }
+
+    /* placeholder for not-yet-built chapters */
+    .stub {
+      font-family: var(--font-sans); font-size: var(--text-sm);
+      color: var(--color-text-secondary); font-style: italic;
+      padding: var(--space-8); text-align: center;
+      border: 1px dashed var(--color-border); border-radius: 8px;
+    }
+
+    .loading-dots::after {
+      content: ''; animation: dots 1.4s steps(4, end) infinite;
+    }
+    @keyframes dots { 0%{content:''} 25%{content:'.'} 50%{content:'..'} 75%{content:'...'} }
+  </style>
+</head>
+<body>
+
+  <!-- ===================== HERO ===================== -->
+  <header class="article-hero">
+    <div class="article-hero__overlay"></div>
+    <div class="article-hero__content">
+      <nav class="breadcrumb breadcrumb--hero">
+        <a href="https://github.com/NavSha/dogs-vs-cats">dogs-vs-cats</a> &nbsp;&rsaquo;&nbsp; Interactive explainer
+      </nav>
+      <h1>How a Machine Learns to See</h1>
+      <p class="lead">Upload a photo and watch a real image-recognition model take it apart — pixel by pixel, layer by layer. No math, no jargon. Just you and a machine that has only ever learned two things: dogs, and cats.</p>
+    </div>
+  </header>
+
+  <!-- ===================== EPIGRAPH ===================== -->
+  <div class="epigraph">
+    <p class="epigraph__verse">
+      &ldquo;The machine in this page is real. It was trained on 20,000 photos,<br>
+      it runs entirely on your device, and it is about to be wrong<br>
+      in ways that teach you exactly how it thinks.&rdquo;
+    </p>
+  </div>
+
+  <!-- ===================== SPECIMEN PICKER ===================== -->
+  <section class="specimen" aria-label="Choose a photo">
+    <div class="specimen__card">
+      <img id="specimen-thumb" class="specimen__thumb" alt="The photo currently being analysed" />
+      <div class="specimen__body">
+        <div id="specimen-verdict" class="specimen__verdict">Pick a photo to begin&hellip;</div>
+        <div class="specimen__hint">This one photo flows through every chapter below. Swap it any time — the whole page updates.</div>
+        <div class="specimen__controls">
+          <button class="chip chip--active" data-sample="dog">🐕 Sample dog</button>
+          <button class="chip" data-sample="cat">🐈 Sample cat</button>
+          <label class="chip">⬆️ Upload your own
+            <input type="file" id="specimen-upload" accept="image/*">
+          </label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TABLE OF CONTENTS ===================== -->
+  <nav class="toc" aria-label="Chapters">
+    <div class="toc__inner">
+      <div class="toc__title">Five ways to look at one photo</div>
+      <ol class="toc__list">
+        <li><span class="toc__numeral">1</span><a href="#ch1">A photo is just numbers</a></li>
+        <li><span class="toc__numeral">2</span><a href="#ch2">The machine looks for patterns</a></li>
+        <li><span class="toc__numeral">3</span><a href="#ch3">Where is it looking?</a></li>
+        <li><span class="toc__numeral">4</span><a href="#ch4">How did it learn?</a></li>
+        <li><span class="toc__numeral">5</span><a href="#ch5">Break it</a></li>
+      </ol>
+    </div>
+  </nav>
+
+  <!-- ===================== INTRO PROSE ===================== -->
+  <article class="prose">
+    <p class="lead">When a computer &ldquo;sees&rdquo; a photo of a dog, it doesn&rsquo;t see a dog. It sees a grid of numbers. Everything else — the ears, the fur, the verdict — is built up from those numbers, one layer at a time. This page lets you watch that happen, on a photo of your choosing, using a model that is genuinely running in your browser right now.</p>
+  </article>
+
+  <!-- ===================== CHAPTER 1 ===================== -->
+  <article class="prose" id="ch1">
+    <h2><span class="section-number">1</span> A photo is just numbers</h2>
+    <p>Before a machine can tell a dog from a cat, the photo has to become something it can do arithmetic on. So the very first thing it does is shrink your image down to a tiny fixed size — this model uses <strong>150&times;150</strong> — and turn every pixel into three numbers: how much <span style="color:#DC2626">red</span>, <span style="color:#059669">green</span>, and <span style="color:#2563EB">blue</span> it contains, each from 0 to 255.</p>
+    <p>That&rsquo;s it. The image below is your photo at the exact size the model receives it. Move your mouse over it (or tap, on a phone) to read the three numbers hiding inside any single pixel.</p>
+  </article>
+
+  <div class="wide-container">
+    <div class="widget" id="px-widget" style="--widget-bg: var(--accent-vision-light); --widget-border: #A5E8F2;">
+      <div class="widget__label" style="color: var(--accent-vision);">Explore</div>
+      <div class="widget__title">The photo, as the machine receives it</div>
+      <div class="widget__instruction">150&times;150 pixels &mdash; 22,500 little squares, each just three numbers. Hover or tap to inspect one.</div>
+      <div class="px-stage">
+        <div class="px-canvas-wrap">
+          <canvas id="px-canvas" class="px-canvas" width="150" height="150"></canvas>
+        </div>
+        <div class="px-readout">
+          <div>
+            <span id="px-swatch" class="px-swatch"></span>
+            <span class="px-rgb">
+              <span class="r">R <b id="px-r">—</b></span>&nbsp;
+              <span class="g">G <b id="px-g">—</b></span>&nbsp;
+              <span class="b">B <b id="px-b">—</b></span>
+            </span>
+          </div>
+          <div class="px-coords">Pixel <span id="px-x">—</span>, <span id="px-y">—</span></div>
+          <p class="px-grid-note">To the machine, your whole photo is just a list of <strong>67,500</strong> numbers (150 &times; 150 pixels &times; 3 colours). It has no idea what a &ldquo;dog&rdquo; is. It only has arithmetic. Everything from here on is the machine finding patterns in these numbers.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <article class="prose">
+    <div class="callout callout--analogy">
+      <div class="callout__label">In one sentence</div>
+      <div class="callout__body"><strong>Pixel:</strong> the smallest dot in a digital image — to a computer, just three numbers for red, green and blue.</div>
+    </div>
+  </article>
+
+  <!-- ===================== CHAPTER 2 (shell) ===================== -->
+  <article class="prose" id="ch2">
+    <h2><span class="section-number">2</span> The machine looks for patterns</h2>
+    <p>A grid of numbers isn&rsquo;t much to go on. So the machine passes your photo through a stack of <span class="term" title="A layer is one step of pattern-finding; the output of one feeds into the next.">layers</span>, and each one hunts for a slightly more complicated pattern than the last. The earliest layers find almost nothing interesting — just edges. Later ones combine those edges into textures, then shapes.</p>
+  </article>
+
+  <div class="wide-container">
+    <div class="widget" id="act-widget" style="--widget-bg: var(--accent-vision-light); --widget-border: #A5E8F2;">
+      <div class="widget__label" style="color: var(--accent-vision);">Visualize</div>
+      <div class="widget__title">What the early layers actually see</div>
+      <div class="widget__instruction">Three real layers pulled from inside the model, running on your photo right now. Brighter spots are where that layer &ldquo;lit up.&rdquo;</div>
+      <div class="act-stagelabel"><span>simple &rarr;</span><span>&rarr; complex</span></div>
+      <div class="act-grid" id="act-grid">
+        <div class="act-panel" data-layer="0">
+          <div class="act-panel__name">Layer 1 &middot; Edges</div>
+          <div class="act-panel__caption">The very first layer. It only notices sharp boundaries — light meeting dark.</div>
+          <div class="act-thumbs"></div>
+        </div>
+        <div class="act-panel" data-layer="1">
+          <div class="act-panel__name">Layer ~20 &middot; Textures</div>
+          <div class="act-panel__caption">Deeper in, edges combine into fur, grass, fabric — repeating texture.</div>
+          <div class="act-thumbs"></div>
+        </div>
+        <div class="act-panel" data-layer="2">
+          <div class="act-panel__name">Layer ~50 &middot; Patterns</div>
+          <div class="act-panel__caption">Deeper still: blobs and parts — the rough location of a snout, an ear, an eye.</div>
+          <div class="act-thumbs"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== CHAPTER 3 (shell) ===================== -->
+  <article class="prose" id="ch3">
+    <h2><span class="section-number">3</span> Where is it looking?</h2>
+    <p>The machine commits to an answer — but <em>which part of the photo</em> made up its mind? We can find out by covering up little regions one at a time and watching how much its confidence drops.</p>
+  </article>
+
+  <div class="wide-container">
+    <div class="widget" id="cam-widget" style="--widget-bg: var(--accent-vision-light); --widget-border: #A5E8F2;">
+      <div class="widget__label" style="color: var(--accent-vision);">Reveal</div>
+      <div class="widget__title">The machine&rsquo;s attention map</div>
+      <div class="widget__instruction">We slide a little grey patch across your photo, and each time we ask the machine again. The warm regions are the ones that, when hidden, confused it the most &mdash; so that&rsquo;s where it was looking.</div>
+      <div class="cam-stage">
+        <div class="cam-canvas-wrap">
+          <canvas id="cam-img" width="150" height="150"></canvas>
+          <canvas id="cam-heat"></canvas>
+        </div>
+        <div class="cam-readout">
+          <div class="cam-verdict" id="cam-verdict">&mdash;</div>
+          <div class="cam-bar"><div class="cam-bar__fill" id="cam-fill"></div></div>
+          <p id="cam-explain">Scroll here to run the experiment. The machine will commit to an answer, then we&rsquo;ll find out which part of the photo it leaned on.</p>
+          <div class="cam-progress" id="cam-progress"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== CHAPTER 4 (shell) ===================== -->
+  <article class="prose" id="ch4">
+    <h2><span class="section-number">4</span> How did it learn?</h2>
+    <p>This machine wasn&rsquo;t programmed with rules about whiskers and snouts. It was <em>trained</em> — shown thousands of labelled photos, over and over, nudging itself a little closer to right each time. Here is its actual report card.</p>
+  </article>
+
+  <div class="wide-container">
+    <div class="widget" id="train-widget" style="--widget-bg: var(--accent-vision-light); --widget-border: #A5E8F2;">
+      <div class="widget__label" style="color: var(--accent-vision);">The real training run</div>
+      <div class="widget__title">Getting better, then hitting a wall</div>
+      <div class="widget__instruction">This is the actual record of this model learning, straight from the training logs. Each step along the bottom is one <span class="term" title="One epoch = the machine looking at all 20,000 training photos once.">epoch</span> — one full pass through all 20,000 photos.</div>
+      <div class="train-chart-wrap">
+        <canvas id="train-canvas" class="train-canvas" width="820" height="360"></canvas>
+        <div class="train-legend">
+          <span><i style="background:#0891B2"></i> Score on photos it had never seen <strong>(the real test)</strong></span>
+          <span><i style="background:#9CA3AF"></i> Score on photos it was studying</span>
+          <span><i style="background:#9333EA"></i> Fine-tuning begins</span>
+        </div>
+      </div>
+      <div class="train-stats">
+        <div class="train-stat"><div class="train-stat__num">20,000</div><div class="train-stat__lab">photos studied</div></div>
+        <div class="train-stat"><div class="train-stat__num" id="ts-epochs">&mdash;</div><div class="train-stat__lab">passes through them all (epochs)</div></div>
+        <div class="train-stat"><div class="train-stat__num" id="ts-acc">&mdash;</div><div class="train-stat__lab">correct on unseen photos</div></div>
+        <div class="train-stat"><div class="train-stat__num" id="ts-stop">&mdash;</div><div class="train-stat__lab">fine-tune epochs before it stopped improving</div></div>
+      </div>
+    </div>
+  </div>
+
+  <article class="prose">
+    <p>Read the chart as a story. In the <strong>first stretch</strong>, the machine learns fast — then flattens out around 96%, no matter how many more times it studies. That flat line is a wall. To get past it, the training switches strategy at the dashed line: it gently unfreezes the deeper vision machinery it had borrowed and lets it adjust, just a little. That&rsquo;s <span class="term" title="Fine-tuning = letting the borrowed, pre-trained layers adjust slightly to your specific task.">fine-tuning</span>, and it buys the last hard percent — up to 97%.</p>
+
+    <div class="callout callout--insight">
+      <div class="callout__label">Why the &ldquo;real test&rdquo; line is the one that matters</div>
+      <div class="callout__body">The machine is graded two ways. One score is on the photos it studied — easy, it could just memorise those. The honest score is on photos it has <strong>never seen</strong>. That blue line is the only one that tells you whether it actually learned to recognise dogs and cats, versus just memorising 20,000 specific pictures.</div>
+    </div>
+
+    <div class="callout callout--analogy">
+      <div class="callout__label">Wait — why is the &ldquo;studied&rdquo; score lower?</div>
+      <div class="callout__body">Odd, right? During practice the machine trains with a handicap: it&rsquo;s shown crops, rotations and flips of each photo, with part of its own brain switched off at random. That makes practice <em>harder</em> than the real test on purpose, so it can&rsquo;t lean on memorising. Take the handicap off and it does even better.</div>
+    </div>
+
+    <div class="callout callout--pm-tip">
+      <div class="callout__label">It knew when to stop</div>
+      <div class="callout__body">The second phase was allowed to run for 20 epochs, but it <strong>stopped itself after 8</strong> — because the honest score had quit improving. Training longer wouldn&rsquo;t have made it smarter; it would just have started memorising. Knowing when more effort stops paying off is a skill, for machines and teams alike.</div>
+    </div>
+  </article>
+
+  <!-- ===================== CHAPTER 5 (shell) ===================== -->
+  <article class="prose" id="ch5">
+    <h2><span class="section-number">5</span> Break it</h2>
+    <p>Here is the most important thing to understand about this machine, and about most AI: it will answer <em>every</em> question with total confidence, even when the question makes no sense. It has only ever learned two words. So show it something that is neither a dog nor a cat, and watch what happens.</p>
+  </article>
+
+  <div class="wide-container">
+    <div class="widget" id="break-widget" style="--widget-bg: var(--accent-vision-light); --widget-border: #A5E8F2;">
+      <div class="widget__label" style="color: var(--accent-vision);">Try to fool it</div>
+      <div class="widget__title">Show it something impossible</div>
+      <div class="widget__instruction">Feed it something that is neither a dog nor a cat &mdash; even pure noise &mdash; and watch it answer anyway, often with sky-high confidence.</div>
+      <div class="break-stage">
+        <canvas id="break-thumb" class="break-thumb" width="150" height="150"></canvas>
+        <div class="break-body">
+          <div class="break-verdict" id="break-verdict">Pick something below &hellip;</div>
+          <div class="cam-bar"><div class="cam-bar__fill" id="break-fill"></div></div>
+          <p id="break-explain">The machine has exactly two words in its vocabulary: &ldquo;dog&rdquo; and &ldquo;cat.&rdquo; It physically cannot answer anything else.</p>
+          <div class="break-suggestions">
+            <button class="chip" data-gen="noise">📺 TV static</button>
+            <button class="chip" data-gen="solid">🟦 A blank square</button>
+            <label class="chip">⬆️ Upload anything (a car, a fox, your face)
+              <input type="file" id="break-upload" accept="image/*">
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <article class="prose">
+    <p>This is the lesson worth carrying out of this page. The machine isn&rsquo;t lying and it isn&rsquo;t broken. It is doing exactly what it was built to do: sort the world into the only two boxes it has ever known. Show it a fox and it will find the box that fits best, and report its confidence in that choice &mdash; not in whether the choice made any sense.</p>
+
+    <div class="callout callout--summary">
+      <div class="callout__label">What this teaches you about all AI</div>
+      <div class="callout__body">
+        <strong>Confidence is not correctness.</strong> A model can be 99% sure and completely wrong, because it&rsquo;s measuring &ldquo;how well does this match what I&rsquo;ve seen&rdquo; &mdash; not &ldquo;is this true.&rdquo;<br><br>
+        <strong>A model only knows the world it was trained on.</strong> This one saw dogs and cats. The big ones saw much more, but the principle is identical: outside their training, they don&rsquo;t know what they don&rsquo;t know.<br><br>
+        <strong>&ldquo;I don&rsquo;t know&rdquo; has to be designed in.</strong> Nothing here ever says &ldquo;that&rsquo;s not a pet,&rdquo; because no one built that option. If you ship AI, the most important question isn&rsquo;t &ldquo;how accurate is it?&rsquo; &mdash; it&rsquo;s &ldquo;what does it do when it&rsquo;s handed something it was never trained for?&rdquo;
+      </div>
+    </div>
+
+    <p>You just watched a real neural network turn a photo into numbers, hunt for patterns, decide where to look, learn from twenty thousand examples, and then fail with total confidence. That whole arc &mdash; from pixels to a confident mistake &mdash; is the same arc running inside the much larger AI systems you use every day. Now you&rsquo;ve seen it happen, end to end, with your own photo.</p>
+  </article>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="site-footer">
+    <p>A project by Navneet from <a href="https://www.airtribe.live/" target="_blank" rel="noopener">Airtribe</a> &middot; <a href="https://github.com/NavSha/dogs-vs-cats" target="_blank" rel="noopener">source on GitHub</a></p>
+  </footer>
+
+  <script>
+  /* =====================================================================
+     How a Machine Learns to See — interactive logic
+     One photo (the "specimen") flows through every chapter. Models are
+     loaded lazily and cached. Everything runs client-side via TensorFlow.js.
+     ===================================================================== */
+  (function () {
+    'use strict';
+
+    const IMG_SIZE = 150;
+
+    // --- Shared state -------------------------------------------------
+    const App = {
+      specimenCanvas: document.createElement('canvas'), // 150x150 backing store
+      _classifier: null,
+      _activations: null,
+      listeners: [],
+    };
+    App.specimenCanvas.width = IMG_SIZE;
+    App.specimenCanvas.height = IMG_SIZE;
+    const sctx = App.specimenCanvas.getContext('2d', { willReadFrequently: true });
+
+    function onSpecimenChange(fn) { App.listeners.push(fn); }
+    function emitSpecimenChange() { App.listeners.forEach(fn => { try { fn(); } catch (e) { console.error(e); } }); }
+
+    // --- Lazy model loaders (cached promises) -------------------------
+    function tfReady() {
+      return new Promise((resolve) => {
+        if (window.tf) return resolve(window.tf);
+        const t = setInterval(() => { if (window.tf) { clearInterval(t); resolve(window.tf); } }, 50);
+      });
+    }
+    async function classifier() {
+      if (!App._classifier) {
+        App._classifier = tfReady().then(tf => tf.loadLayersModel('model/model.json'));
+      }
+      return App._classifier;
+    }
+    async function activations() {
+      if (!App._activations) {
+        App._activations = tfReady().then(tf => tf.loadLayersModel('model-activations/model.json'));
+      }
+      return App._activations;
+    }
+
+    // Heavy GPU/CPU work runs one task at a time. On devices without WebGL
+    // (CPU backend), running several model passes at once can exhaust memory;
+    // this serialises them so chapters never compute concurrently.
+    let _gpuChain = Promise.resolve();
+    function runExclusive(fn) {
+      const next = _gpuChain.then(fn, fn);
+      _gpuChain = next.catch(() => {});
+      return next;
+    }
+
+    // --- Specimen helpers ---------------------------------------------
+    // Draw any loaded <img> into the 150x150 backing canvas (cover-fit).
+    function setSpecimenFromImage(img) {
+      const s = Math.min(img.naturalWidth, img.naturalHeight);
+      const sx = (img.naturalWidth - s) / 2;
+      const sy = (img.naturalHeight - s) / 2;
+      sctx.clearRect(0, 0, IMG_SIZE, IMG_SIZE);
+      sctx.drawImage(img, sx, sy, s, s, 0, 0, IMG_SIZE, IMG_SIZE);
+      emitSpecimenChange();
+    }
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+      });
+    }
+    // Returns a tf tensor [1,150,150,3] in [0,1] — the model's expected input.
+    function specimenTensor(tf) {
+      return tf.tidy(() => {
+        const px = tf.browser.fromPixels(App.specimenCanvas); // [150,150,3], 0..255
+        return px.toFloat().div(255).expandDims(0);
+      });
+    }
+
+    // --- Persistent verdict (also verifies the model loads in-browser) -
+    const thumb = document.getElementById('specimen-thumb');
+    const verdictEl = document.getElementById('specimen-verdict');
+
+    async function updateVerdict() {
+      verdictEl.innerHTML = 'Thinking<span class="loading-dots"></span>';
+      try {
+        const tf = await tfReady();
+        const model = await classifier();
+        const input = specimenTensor(tf);
+        const out = model.predict(input);
+        const score = (await out.data())[0]; // 1.0 = dog, 0.0 = cat
+        tf.dispose([input, out]);
+        const isDog = score >= 0.5;
+        const conf = isDog ? score : 1 - score;
+        verdictEl.innerHTML =
+          'The machine says: <strong>' + (isDog ? 'Dog' : 'Cat') + '</strong> &mdash; ' +
+          '<span class="v-pct">' + (conf * 100).toFixed(1) + '% sure</span>';
+      } catch (e) {
+        console.error(e);
+        verdictEl.textContent = 'Could not run the model (see console).';
+      }
+    }
+
+    // --- Specimen picker UI -------------------------------------------
+    const sampleButtons = document.querySelectorAll('[data-sample]');
+    const uploadInput = document.getElementById('specimen-upload');
+
+    function markActive(btn) {
+      document.querySelectorAll('.specimen__controls .chip').forEach(c => c.classList.remove('chip--active'));
+      if (btn) btn.classList.add('chip--active');
+    }
+
+    async function pickSample(name, btn) {
+      const img = await loadImage('samples/' + name + '.jpg');
+      thumb.src = img.src;
+      markActive(btn);
+      setSpecimenFromImage(img);
+    }
+
+    sampleButtons.forEach(btn => {
+      btn.addEventListener('click', () => pickSample(btn.dataset.sample, btn));
+    });
+    uploadInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        thumb.src = url;
+        markActive(uploadInput.closest('.chip'));
+        setSpecimenFromImage(img);
+      };
+      img.src = url;
+    });
+
+    // Re-run the verdict whenever the specimen changes.
+    onSpecimenChange(updateVerdict);
+
+    /* =================================================================
+       CHAPTER 1 — A photo is just numbers
+       ================================================================= */
+    (function chapter1() {
+      const canvas = document.getElementById('px-canvas');
+      const ctx = canvas.getContext('2d');
+      const elR = document.getElementById('px-r');
+      const elG = document.getElementById('px-g');
+      const elB = document.getElementById('px-b');
+      const elX = document.getElementById('px-x');
+      const elY = document.getElementById('px-y');
+      const swatch = document.getElementById('px-swatch');
+
+      function render() {
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, IMG_SIZE, IMG_SIZE);
+        ctx.drawImage(App.specimenCanvas, 0, 0);
+      }
+
+      function inspectAt(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        const px = Math.floor((clientX - rect.left) / rect.width * IMG_SIZE);
+        const py = Math.floor((clientY - rect.top) / rect.height * IMG_SIZE);
+        if (px < 0 || py < 0 || px >= IMG_SIZE || py >= IMG_SIZE) return;
+        const d = sctx.getImageData(px, py, 1, 1).data;
+        elR.textContent = d[0]; elG.textContent = d[1]; elB.textContent = d[2];
+        elX.textContent = px; elY.textContent = py;
+        swatch.style.background = 'rgb(' + d[0] + ',' + d[1] + ',' + d[2] + ')';
+      }
+
+      canvas.addEventListener('mousemove', (e) => inspectAt(e.clientX, e.clientY));
+      canvas.addEventListener('touchstart', (e) => {
+        const t = e.touches[0]; inspectAt(t.clientX, t.clientY);
+      }, { passive: true });
+      canvas.addEventListener('touchmove', (e) => {
+        const t = e.touches[0]; inspectAt(t.clientX, t.clientY);
+      }, { passive: true });
+
+      onSpecimenChange(render);
+    })();
+
+    /* =================================================================
+       CHAPTER 2 — The machine looks for patterns (real activations)
+       ================================================================= */
+    (function chapter2() {
+      const panels = Array.from(document.querySelectorAll('#act-grid .act-panel'));
+      const THUMBS_PER_LAYER = 4;
+
+      // Build the canvases once.
+      panels.forEach(p => {
+        const wrap = p.querySelector('.act-thumbs');
+        for (let i = 0; i < THUMBS_PER_LAYER; i++) {
+          const c = document.createElement('canvas');
+          c.className = 'act-thumb';
+          wrap.appendChild(c);
+        }
+      });
+
+      // Dark-navy -> cyan -> white colour ramp (reads well on the dark tile).
+      function ramp(v) {
+        const a = [11, 19, 32], b = [8, 145, 178], c = [224, 255, 255];
+        const mix = (p, q, t) => [
+          Math.round(p[0] + (q[0] - p[0]) * t),
+          Math.round(p[1] + (q[1] - p[1]) * t),
+          Math.round(p[2] + (q[2] - p[2]) * t)];
+        return v < 0.5 ? mix(a, b, v / 0.5) : mix(b, c, (v - 0.5) / 0.5);
+      }
+
+      function drawChannel(canvas, data, h, w) {
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        const img = ctx.createImageData(w, h);
+        for (let i = 0; i < h * w; i++) {
+          const [r, g, b] = ramp(data[i]);
+          img.data[i * 4] = r; img.data[i * 4 + 1] = g; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      let running = false;
+      async function compute() {
+        if (running) return;
+        running = true;
+        try {
+          const tf = await tfReady();
+          const model = await activations();
+          const input = specimenTensor(tf);
+          const outs = model.predict(input); // array of 3 tensors [1,h,w,c]
+          for (let li = 0; li < panels.length; li++) {
+            const t = outs[li];
+            const [, h, w, c] = t.shape;
+            // Pick the channels that lit up most on this image.
+            const means = tf.tidy(() => t.mean([0, 1, 2]));            // [c]
+            const k = Math.min(THUMBS_PER_LAYER, c);
+            const top = tf.tidy(() => tf.topk(means, k).indices);
+            const idx = await top.data();
+            const thumbs = panels[li].querySelectorAll('.act-thumb');
+            for (let j = 0; j < k; j++) {
+              const ci = idx[j];
+              const norm = tf.tidy(() => {
+                const ch = t.slice([0, 0, 0, ci], [1, h, w, 1]).squeeze(); // [h,w]
+                const mn = ch.min(), mx = ch.max();
+                return ch.sub(mn).div(mx.sub(mn).add(1e-6));
+              });
+              const data = await norm.data();
+              drawChannel(thumbs[j], data, h, w);
+              norm.dispose();
+            }
+            means.dispose(); top.dispose();
+          }
+          tf.dispose(outs); input.dispose();
+        } catch (e) {
+          console.error('activations failed', e);
+        } finally {
+          running = false;
+        }
+      }
+
+      // Defer the first (heavier) run until the widget is in view.
+      let seen = false;
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some(e => e.isIntersecting)) { seen = true; io.disconnect(); runExclusive(compute); }
+      }, { rootMargin: '200px' });
+      io.observe(document.getElementById('act-widget'));
+
+      onSpecimenChange(() => { if (seen) runExclusive(compute); });
+    })();
+
+    /* =================================================================
+       CHAPTER 3 — Where is it looking? (occlusion sensitivity)
+       Slide a grey patch over a GRID x GRID lattice, predict each occluded
+       image in one batch, and measure how far the predicted-class confidence
+       drops. Bigger drop = the machine was relying on that region.
+       ================================================================= */
+    (function chapter3() {
+      const GRID = 8;                 // heatmap resolution (GRID x GRID)
+      const PATCH = Math.round(IMG_SIZE / GRID * 1.6); // grey patch, slightly overlapping
+      const imgCanvas = document.getElementById('cam-img');
+      const heatCanvas = document.getElementById('cam-heat');
+      const ictx = imgCanvas.getContext('2d');
+      const verdictEl = document.getElementById('cam-verdict');
+      const fillEl = document.getElementById('cam-fill');
+      const explainEl = document.getElementById('cam-explain');
+      const progEl = document.getElementById('cam-progress');
+
+      // transparent -> amber -> red, alpha rising with importance
+      function heatColor(v) {
+        const lo = [245, 158, 11], hi = [220, 38, 38]; // amber -> red
+        const t = Math.min(1, v);
+        const c = [Math.round(lo[0] + (hi[0] - lo[0]) * t),
+                   Math.round(lo[1] + (hi[1] - lo[1]) * t),
+                   Math.round(lo[2] + (hi[2] - lo[2]) * t)];
+        return [c[0], c[1], c[2], Math.round(180 * Math.pow(t, 0.8))]; // alpha
+      }
+
+      let running = false;
+      async function compute() {
+        if (running) return;
+        running = true;
+        // base photo underneath
+        ictx.clearRect(0, 0, IMG_SIZE, IMG_SIZE);
+        ictx.drawImage(App.specimenCanvas, 0, 0);
+        progEl.textContent = 'Running ' + (GRID * GRID + 1) + ' experiments...';
+        try {
+          const tf = await tfReady();
+          const model = await classifier();
+
+          // base pixels in [0,1]
+          const id = sctx.getImageData(0, 0, IMG_SIZE, IMG_SIZE).data;
+          const base = new Float32Array(IMG_SIZE * IMG_SIZE * 3);
+          for (let i = 0, j = 0; i < IMG_SIZE * IMG_SIZE; i++) {
+            base[j++] = id[i * 4] / 255;
+            base[j++] = id[i * 4 + 1] / 255;
+            base[j++] = id[i * 4 + 2] / 255;
+          }
+
+          // baseline score
+          const baseT = tf.tensor4d(base, [1, IMG_SIZE, IMG_SIZE, 3]);
+          const baseScore = (await model.predict(baseT).data())[0]; // 1=dog
+          baseT.dispose();
+          const isDog = baseScore >= 0.5;
+          const f = (s) => isDog ? s : (1 - s);     // confidence in predicted class
+          const baseConf = f(baseScore);
+
+          // build all occluded images into one batch
+          const N = GRID * GRID;
+          const batch = new Float32Array(N * IMG_SIZE * IMG_SIZE * 3);
+          let n = 0;
+          for (let gy = 0; gy < GRID; gy++) {
+            for (let gx = 0; gx < GRID; gx++) {
+              const off = n * IMG_SIZE * IMG_SIZE * 3;
+              batch.set(base, off);
+              const cx = Math.round((gx + 0.5) * IMG_SIZE / GRID);
+              const cy = Math.round((gy + 0.5) * IMG_SIZE / GRID);
+              const x0 = Math.max(0, cx - PATCH / 2), x1 = Math.min(IMG_SIZE, cx + PATCH / 2);
+              const y0 = Math.max(0, cy - PATCH / 2), y1 = Math.min(IMG_SIZE, cy + PATCH / 2);
+              for (let y = y0; y < y1; y++) {
+                for (let x = x0; x < x1; x++) {
+                  const p = off + (y * IMG_SIZE + x) * 3;
+                  batch[p] = 0.5; batch[p + 1] = 0.5; batch[p + 2] = 0.5; // neutral grey
+                }
+              }
+              n++;
+            }
+          }
+          // Predict in small chunks so peak memory stays low (matters a lot
+          // on the CPU backend / weak devices).
+          const scores = new Float32Array(N);
+          const CHUNK = 8;
+          for (let start = 0; start < N; start += CHUNK) {
+            const m = Math.min(CHUNK, N - start);
+            const sub = batch.subarray(start * IMG_SIZE * IMG_SIZE * 3,
+                                       (start + m) * IMG_SIZE * IMG_SIZE * 3);
+            const chunkT = tf.tensor4d(sub, [m, IMG_SIZE, IMG_SIZE, 3]);
+            const out = model.predict(chunkT);
+            const d = await out.data();
+            for (let i = 0; i < m; i++) scores[start + i] = d[i];
+            tf.dispose([chunkT, out]);
+            await new Promise(r => setTimeout(r, 0)); // yield to the UI thread
+            progEl.textContent = 'Running experiments... ' + Math.min(N, start + m) + '/' + N;
+          }
+
+          // importance = how much hiding this cell dropped the confidence
+          const imp = new Float32Array(N);
+          let maxImp = 1e-6, peak = 0;
+          for (let i = 0; i < N; i++) {
+            const d = Math.max(0, baseConf - f(scores[i]));
+            imp[i] = d;
+            if (d > maxImp) { maxImp = d; peak = i; }
+          }
+
+          // draw heatmap (GRID x GRID, CSS smooth-scales it up)
+          heatCanvas.width = GRID; heatCanvas.height = GRID;
+          const hctx = heatCanvas.getContext('2d');
+          const himg = hctx.createImageData(GRID, GRID);
+          for (let i = 0; i < N; i++) {
+            const [r, g, b, a] = heatColor(imp[i] / maxImp);
+            himg.data[i * 4] = r; himg.data[i * 4 + 1] = g; himg.data[i * 4 + 2] = b; himg.data[i * 4 + 3] = a;
+          }
+          hctx.putImageData(himg, 0, 0);
+
+          verdictEl.innerHTML = (baseConf * 100).toFixed(1) + '% sure this is a <strong>' + (isDog ? 'Dog' : 'Cat') + '</strong>';
+          fillEl.style.width = (baseConf * 100) + '%';
+          const peakX = peak % GRID, peakY = Math.floor(peak / GRID);
+          const where = (peakY < GRID / 3 ? 'upper' : peakY > 2 * GRID / 3 ? 'lower' : 'middle') + ' ' +
+                        (peakX < GRID / 3 ? 'left' : peakX > 2 * GRID / 3 ? 'right' : 'centre');
+          explainEl.innerHTML = 'Hiding the <strong>' + where + '</strong> of the photo confused it most — so that region carried the most evidence. Notice it ignores the background entirely.';
+          progEl.textContent = '';
+        } catch (e) {
+          console.error('occlusion failed', e);
+          progEl.textContent = 'Could not run (see console).';
+        } finally {
+          running = false;
+        }
+      }
+
+      let seen = false;
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some(e => e.isIntersecting)) { seen = true; io.disconnect(); runExclusive(compute); }
+      }, { rootMargin: '150px' });
+      io.observe(document.getElementById('cam-widget'));
+      onSpecimenChange(() => { if (seen) runExclusive(compute); });
+    })();
+
+    /* =================================================================
+       CHAPTER 4 — How did it learn? (real training curves)
+       ================================================================= */
+    (function chapter4() {
+      const canvas = document.getElementById('train-canvas');
+
+      function draw(hist) {
+        const p1 = hist.phase1, p2 = hist.phase2;
+        const accTrain = p1.accuracy.concat(p2.accuracy);
+        const accVal = p1.val_accuracy.concat(p2.val_accuracy);
+        const boundary = p1.accuracy.length;       // epoch where fine-tuning starts
+        const total = accVal.length;
+        const peakVal = Math.max.apply(null, accVal);
+
+        // fill stat cards from the real data
+        document.getElementById('ts-epochs').textContent = total;
+        document.getElementById('ts-acc').textContent = (peakVal * 100).toFixed(1) + '%';
+        document.getElementById('ts-stop').textContent = p2.val_accuracy.length;
+
+        const W = canvas.width, H = canvas.height;
+        const ctx = canvas.getContext('2d');
+        const padL = 56, padR = 20, padT = 24, padB = 40;
+        const yMin = 0.85, yMax = 1.0;
+        const x = (i) => padL + (W - padL - padR) * (i / (total - 1));
+        const y = (v) => padT + (H - padT - padB) * (1 - (v - yMin) / (yMax - yMin));
+
+        ctx.clearRect(0, 0, W, H);
+        ctx.font = '13px Inter, sans-serif';
+
+        // y gridlines + labels
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        [0.85, 0.90, 0.95, 1.0].forEach(v => {
+          ctx.strokeStyle = '#EEEAE4'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(padL, y(v)); ctx.lineTo(W - padR, y(v)); ctx.stroke();
+          ctx.fillStyle = '#9CA3AF';
+          ctx.fillText((v * 100).toFixed(0) + '%', padL - 10, y(v));
+        });
+        // x labels (epoch) — anchor the ends inward so they don't clip
+        ctx.textBaseline = 'top'; ctx.fillStyle = '#9CA3AF';
+        ctx.textAlign = 'left';  ctx.fillText('Epoch 1', padL, H - padB + 8);
+        ctx.textAlign = 'right'; ctx.fillText('Epoch ' + total, W - padR, H - padB + 8);
+
+        // fine-tune boundary
+        const bx = x(boundary - 0.5);
+        ctx.strokeStyle = '#9333EA'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.moveTo(bx, padT); ctx.lineTo(bx, H - padB); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#9333EA'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText('  fine-tuning', bx, padT);
+
+        function line(arr, color, width) {
+          ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round';
+          ctx.beginPath();
+          arr.forEach((v, i) => { i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v)); });
+          ctx.stroke();
+        }
+        line(accTrain, '#9CA3AF', 2);          // studied
+        line(accVal, '#0891B2', 3);            // unseen (the real test)
+
+        // peak marker
+        const pk = accVal.indexOf(peakVal);
+        ctx.fillStyle = '#0891B2';
+        ctx.beginPath(); ctx.arc(x(pk), y(peakVal), 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#155E75'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillText('best: ' + (peakVal * 100).toFixed(1) + '%', x(pk), y(peakVal) - 10);
+      }
+
+      // load once, lazily, when scrolled near
+      let loaded = false;
+      const io = new IntersectionObserver((entries) => {
+        if (loaded || !entries.some(e => e.isIntersecting)) return;
+        loaded = true; io.disconnect();
+        fetch('data/training_history.json')
+          .then(r => r.json()).then(draw)
+          .catch(e => console.error('training history failed', e));
+      }, { rootMargin: '200px' });
+      io.observe(document.getElementById('train-widget'));
+    })();
+
+    /* =================================================================
+       CHAPTER 5 — Break it
+       Independent of the main specimen: feed the classifier things that are
+       neither dog nor cat and surface its confident, wrong answer.
+       ================================================================= */
+    (function chapter5() {
+      const thumb = document.getElementById('break-thumb');
+      const tctx = thumb.getContext('2d', { willReadFrequently: true });
+      const verdictEl = document.getElementById('break-verdict');
+      const fillEl = document.getElementById('break-fill');
+      const explainEl = document.getElementById('break-explain');
+      const chips = document.querySelectorAll('.break-suggestions .chip');
+      const upload = document.getElementById('break-upload');
+
+      function markActive(btn) {
+        chips.forEach(c => c.classList.remove('chip--active'));
+        if (btn) btn.classList.add('chip--active');
+      }
+
+      function genNoise() {
+        const img = tctx.createImageData(IMG_SIZE, IMG_SIZE);
+        for (let i = 0; i < img.data.length; i += 4) {
+          const v = Math.random() * 255;
+          img.data[i] = Math.random() * 255; img.data[i + 1] = Math.random() * 255;
+          img.data[i + 2] = Math.random() * 255; img.data[i + 3] = 255;
+        }
+        tctx.putImageData(img, 0, 0);
+      }
+      function genSolid() {
+        tctx.fillStyle = '#3B82F6'; tctx.fillRect(0, 0, IMG_SIZE, IMG_SIZE);
+      }
+      function drawUpload(img) {
+        const s = Math.min(img.naturalWidth, img.naturalHeight);
+        tctx.drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, IMG_SIZE, IMG_SIZE);
+      }
+
+      async function classify(kind) {
+        verdictEl.innerHTML = 'Thinking<span class="loading-dots"></span>';
+        fillEl.style.width = '0%';
+        try {
+          const tf = await tfReady();
+          const model = await classifier();
+          const out = tf.tidy(() => {
+            const px = tf.browser.fromPixels(thumb).toFloat().div(255).expandDims(0);
+            return model.predict(px);
+          });
+          const score = (await out.data())[0];
+          out.dispose();
+          const isDog = score >= 0.5;
+          const conf = isDog ? score : 1 - score;
+          verdictEl.innerHTML = 'The machine is <span style="color:var(--accent-vision)">' +
+            (conf * 100).toFixed(1) + '% sure</span> this is a <strong>' + (isDog ? 'Dog' : 'Cat') + '</strong>';
+          fillEl.style.width = (conf * 100) + '%';
+
+          let why;
+          if (kind === 'noise') {
+            why = 'That was <strong>pure random static</strong> — no dog, no cat, no anything. It still picked a side, and sounded sure. There was never an option to say &ldquo;that&rsquo;s not a pet.&rdquo;';
+          } else if (kind === 'solid') {
+            why = 'That was a <strong>flat blue square</strong>. The machine has no concept of &ldquo;blue square,&rdquo; so it forced it into the nearest box it owns.';
+          } else if (conf > 0.85) {
+            why = 'Notice how <strong>certain</strong> it sounds — and remember it has only ever seen dogs and cats. High confidence here means &ldquo;this resembles my training&rdquo;, not &ldquo;I am right.&rdquo;';
+          } else {
+            why = 'It hedged a little this time, but it still had to choose dog or cat. It can never answer &ldquo;neither.&rdquo;';
+          }
+          explainEl.innerHTML = why;
+        } catch (e) {
+          console.error('break classify failed', e);
+          verdictEl.textContent = 'Could not run the model (see console).';
+        }
+      }
+
+      chips.forEach(chip => {
+        if (chip.dataset.gen) {
+          chip.addEventListener('click', () => {
+            markActive(chip);
+            chip.dataset.gen === 'noise' ? genNoise() : genSolid();
+            runExclusive(() => classify(chip.dataset.gen));
+          });
+        }
+      });
+      upload.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          drawUpload(img);
+          markActive(upload.closest('.chip'));
+          runExclusive(() => classify('upload'));
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      });
+    })();
+
+    // --- Boot: load the default sample dog ----------------------------
+    pickSample('dog', document.querySelector('[data-sample="dog"]'));
+
+  })();
+  </script>
+
+</body>
+</html>
