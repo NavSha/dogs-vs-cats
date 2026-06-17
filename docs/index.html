@@ -268,8 +268,8 @@
     </div></div>
     <div class="step" data-ch="2" data-step="3"><div class="step__card">
       <div class="step__n">03 / deeper still</div>
-      <h3>Textures become parts.</h3>
-      <p>Deeper again, it lights up on blobs and parts — roughly where a snout sits, or an ear. Nobody told it what an ear is. It learned that this shape predicts &ldquo;dog.&rdquo;</p>
+      <h3>Textures become bigger patterns.</h3>
+      <p>Deeper again, the patterns grow larger and more abstract — textures combining across whole regions of the photo. Push much deeper than this and they sharpen into actual parts, like an ear or a snout. Nobody ever defined those; the machine just learned which shapes predict &ldquo;dog.&rdquo;</p>
     </div></div>
   </div>
 </section>
@@ -473,7 +473,7 @@ document.getElementById('sp-upload').addEventListener('change',e=>{const f=e.tar
 (function(){
   const base=document.getElementById('c2-base'),glow=document.getElementById('c2-glow'),cap=document.getElementById('c2-cap');
   const chipC=[...document.querySelectorAll('#c2-chips canvas')];
-  const NAMES=['EDGES · layer 1','TEXTURES · layer ~20','PATTERNS · layer ~50'];
+  const NAMES=['EDGES · the first layer','TEXTURES · a few layers in','PATTERNS · deeper still'];
   function paint(cv,data,h,w,alpha){cv.width=w;cv.height=h;const x=cv.getContext('2d');const im=x.createImageData(w,h);for(let i=0;i<h*w;i++){const c=rampCyan(data[i]);im.data[i*4]=c[0];im.data[i*4+1]=c[1];im.data[i*4+2]=c[2];im.data[i*4+3]=alpha?Math.round(255*Math.pow(data[i],.7)):255;}x.putImageData(im,0,0);}
   let processed=null,computing=false,step=0;
   function drawBase(){base.getContext('2d').drawImage(specimen,0,0,300,300);}
