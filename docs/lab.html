@@ -1,0 +1,1527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raise the Machine — a hands-on neural network laboratory</title>
+<meta name="description" content="A laboratory, not an article. Train a real neural network in seconds, map the space it thinks in, trace its decisions backwards, fool it with invisible pixels, race it, teach it your own objects — and teach it to say 'I don't know'. Everything runs in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+<style>
+  :root{
+    --bg:#060808; --panel:#0a0d0c; --panel2:#080b0a;
+    --ink:#E9E6DC; --dim:#87918B; --faint:#4d5651;
+    --phos:#53F1B6; --phos-dim:#1d5943; --violet:#A78BFA; --amber:#FFB454; --red:#FF6B5E;
+    --line:#1b2320; --line2:#243029;
+    --serif:'Fraunces',Georgia,serif; --mono:'JetBrains Mono',monospace; --ui:'Inter',sans-serif;
+    --ease:cubic-bezier(.16,1,.3,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition-duration:.01ms!important;animation-duration:.01ms!important}}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--ui); font-size:17px; line-height:1.7;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  a{color:var(--phos)}
+  ::selection{background:rgba(83,241,182,.25)}
+
+  /* film grain + vignette */
+  .grain{position:fixed;inset:0;z-index:90;pointer-events:none;opacity:.5;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 .35 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");}
+  .vig{position:fixed;inset:0;z-index:89;pointer-events:none;background:radial-gradient(120% 100% at 50% 45%,transparent 55%,rgba(0,0,0,.5))}
+
+  /* ============ HUD ============ */
+  .hud{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;justify-content:space-between;align-items:center;
+    padding:10px 22px;font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;
+    background:linear-gradient(rgba(6,8,8,.92),rgba(6,8,8,.65) 70%,transparent);pointer-events:none}
+  .hud b{color:var(--phos);font-weight:500}
+  .hud .l{color:var(--dim)}
+  .hud .r{color:var(--faint)}
+  .hud .r b{color:var(--phos)}
+  .rail{position:fixed;top:0;left:0;height:2px;width:0;background:var(--phos);z-index:101;box-shadow:0 0 8px rgba(83,241,182,.7)}
+
+  /* experiment log */
+  .lablog{position:fixed;left:18px;bottom:18px;z-index:100;width:330px;max-width:calc(100vw - 36px);
+    font-family:var(--mono);font-size:11px;line-height:1.75;color:var(--phos);
+    background:rgba(7,10,9,.88);border:1px solid var(--line2);border-radius:4px;
+    backdrop-filter:blur(6px);overflow:hidden;transition:opacity .3s}
+  .lablog__bar{display:flex;justify-content:space-between;padding:6px 12px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
+  .lablog__bar i{width:6px;height:6px;border-radius:50%;background:var(--phos);display:inline-block;margin-right:8px;animation:blink 2.2s infinite;vertical-align:1px}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  .lablog__body{max-height:132px;overflow:hidden;padding:8px 12px;display:flex;flex-direction:column;justify-content:flex-end}
+  .lablog__body div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.55}
+  .lablog__body div:last-child{opacity:1}
+  .lablog__body span{color:var(--faint);margin-right:8px}
+  .lablog.min .lablog__body{display:none}
+  @media(max-width:900px){.lablog{display:none}}
+
+  /* ============ typography voices ============ */
+  .serif{font-family:var(--serif)}
+  .mvoice{font-family:var(--mono);color:var(--phos);font-size:13.5px;line-height:1.8}
+  .mvoice::before{content:'MDL> ';color:var(--phos-dim)}
+  .kick{font-family:var(--mono);font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--amber)}
+
+  .wrap{max-width:1060px;margin:0 auto;padding:0 5vw}
+
+  /* calibration ruler */
+  .ruler{height:14px;margin:0 auto;max-width:1060px;position:relative;opacity:.5;
+    background-image:repeating-linear-gradient(90deg,var(--line2) 0 1px,transparent 1px 10px),repeating-linear-gradient(90deg,var(--faint) 0 1px,transparent 1px 50px);
+    background-size:100% 6px,100% 14px;background-repeat:no-repeat;background-position:bottom left}
+
+  /* corner brackets */
+  .brk{position:relative}
+  .brk::before,.brk::after{content:'';position:absolute;width:18px;height:18px;pointer-events:none}
+  .brk::before{top:-1px;left:-1px;border-top:1.5px solid var(--phos);border-left:1.5px solid var(--phos)}
+  .brk::after{bottom:-1px;right:-1px;border-bottom:1.5px solid var(--phos);border-right:1.5px solid var(--phos)}
+
+  /* ============ hero ============ */
+  .hero{position:relative;min-height:100vh;display:flex;align-items:center;overflow:hidden}
+  #hero-bg{position:absolute;inset:0;width:100%;height:100%;opacity:.34;filter:saturate(1.1)}
+  .hero__scrim{position:absolute;inset:0;background:radial-gradient(90% 80% at 38% 55%,rgba(6,8,8,.2),rgba(6,8,8,.94) 75%)}
+  .hero__in{position:relative;z-index:2;max-width:1060px;margin:0 auto;padding:16vh 5vw 10vh;width:100%}
+  .hero h1{font-family:var(--serif);font-weight:390;font-size:clamp(52px,9.2vw,128px);line-height:.98;letter-spacing:-.015em}
+  .hero h1 em{font-style:italic;color:var(--phos);text-shadow:0 0 40px rgba(83,241,182,.35)}
+  .hero .sub{margin-top:34px;max-width:560px;color:#B7BEB6;font-size:19px;font-weight:400}
+  .bootlog{margin-top:44px;font-family:var(--mono);font-size:12.5px;line-height:2;color:var(--phos);min-height:6em}
+  .bootlog .ok{color:var(--dim)}
+  .bootlog .ok::after{content:'  ok';color:var(--phos)}
+  .hero .cue{margin-top:30px;font-family:var(--mono);font-size:11px;letter-spacing:.26em;text-transform:uppercase;color:var(--faint)}
+  .hero .cue i{display:inline-block;width:34px;height:1px;background:var(--phos);vertical-align:middle;margin-right:12px;animation:blink 2s infinite}
+
+  /* ============ experiment frontispiece ============ */
+  .front{position:relative;max-width:1060px;margin:0 auto;padding:17vh 5vw 5vh}
+  .front .ghost{position:absolute;right:2vw;top:6vh;font-family:var(--serif);font-weight:300;font-style:italic;font-size:clamp(120px,22vw,300px);line-height:1;color:transparent;-webkit-text-stroke:1px var(--line2);user-select:none;pointer-events:none}
+  .front .ref{font-family:var(--mono);font-size:12px;letter-spacing:.26em;text-transform:uppercase;color:var(--amber);display:flex;align-items:center;gap:14px}
+  .front .ref::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent)}
+  .front h2{font-family:var(--serif);font-weight:420;font-size:clamp(34px,5.4vw,64px);line-height:1.04;letter-spacing:-.01em;margin-top:22px;max-width:16em}
+  .front h2 em{font-style:italic;color:var(--phos)}
+  .front .lede{color:#ADB5AC;font-size:18.5px;margin-top:20px;max-width:620px}
+  .front .mnote{margin-top:18px;max-width:620px}
+
+  /* ============ instrument panel ============ */
+  .panel{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:4px;padding:30px;position:relative}
+  .panel .tag{position:absolute;top:-9px;left:22px;background:var(--bg);padding:0 10px;font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim)}
+  .panel--warn{border-color:#3d2f16}
+  .panel--warn::before{content:'';position:absolute;top:0;left:0;right:0;height:5px;border-radius:4px 4px 0 0;
+    background:repeating-linear-gradient(-45deg,var(--amber) 0 9px,transparent 9px 18px);opacity:.55}
+  .lab{max-width:1060px;margin:0 auto;padding:0 5vw}
+  .lab__title{font-family:var(--serif);font-size:25px;font-weight:480;margin:2px 0 4px}
+  .lab__instr{color:var(--dim);font-size:15px;margin-bottom:22px;max-width:640px}
+  .lab__stage{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+
+  .btn{font-family:var(--mono);font-size:13.5px;font-weight:500;letter-spacing:.06em;padding:13px 24px;border-radius:3px;border:1px solid var(--phos);background:rgba(83,241,182,.1);color:var(--phos);cursor:pointer;transition:all .2s var(--ease);text-transform:uppercase}
+  .btn:hover{background:var(--phos);color:#04150e;box-shadow:0 0 24px rgba(83,241,182,.35)}
+  .btn:disabled{opacity:.35;cursor:default;background:transparent;color:var(--dim);border-color:var(--line2);box-shadow:none}
+  .btn--amber{border-color:var(--amber);color:var(--amber);background:rgba(255,180,84,.08)}
+  .btn--amber:hover{background:var(--amber);color:#1f1200;box-shadow:0 0 24px rgba(255,180,84,.3)}
+  .chips{display:flex;gap:9px;flex-wrap:wrap}
+  .chip{font-family:var(--mono);font-size:12.5px;padding:9px 15px;border-radius:3px;border:1px solid var(--line2);background:#0c100e;color:var(--ink);cursor:pointer;transition:all .2s var(--ease);display:inline-flex;align-items:center;gap:7px}
+  .chip:hover{border-color:var(--phos);color:var(--phos)}
+  .chip--active{background:rgba(83,241,182,.14);border-color:var(--phos);color:var(--phos)}
+  .chip:disabled{opacity:.35;cursor:default}
+  .chip input[type=file]{display:none}
+  .prog{font-family:var(--mono);font-size:12px;color:var(--dim);min-height:1.4em}
+  .bar{height:6px;border-radius:2px;background:#0c100e;overflow:hidden;margin:6px 0 4px;border:1px solid var(--line)}
+  .bar i{display:block;height:100%;width:0;background:var(--phos);box-shadow:0 0 10px rgba(83,241,182,.6);transition:width .5s var(--ease)}
+  .bar i.amber{background:var(--amber);box-shadow:0 0 10px rgba(255,180,84,.6)}
+  .verdict{font-family:var(--serif);font-size:21px;font-weight:480;min-height:1.4em}
+  .verdict .pct{color:var(--phos);font-family:var(--mono);font-size:.85em}
+  .explain{color:#B4BBB2;font-size:15.5px}
+
+  .note{max-width:780px;margin:6vh auto 0;padding:0 5vw}
+  .note__box{border:1px solid var(--line);border-left:3px solid var(--phos);background:rgba(83,241,182,.04);border-radius:0 4px 4px 0;padding:20px 24px}
+  .note__box--warn{border-left-color:var(--amber);background:rgba(255,180,84,.04)}
+  .note__box--sum{border-left-color:var(--violet);background:rgba(167,139,250,.05)}
+  .note__label{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--phos);margin-bottom:8px}
+  .note__box--warn .note__label{color:var(--amber)}.note__box--sum .note__label{color:var(--violet)}
+  .note__box p{font-size:15.5px;color:#C6CCC3}.note__box p+p{margin-top:12px}
+
+  /* data divider strips */
+  .divider{height:56px;margin:11vh 0 0;position:relative;opacity:.5}
+  .divider canvas{width:100%;height:100%;display:block}
+  .divider::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,var(--bg),transparent 20%,transparent 80%,var(--bg))}
+
+  /* specimen intake */
+  .specimen{max-width:820px;margin:7vh auto 0;padding:0 5vw}
+  .spec-card{display:flex;gap:26px;align-items:center;flex-wrap:wrap}
+  .spec-photo{position:relative;flex-shrink:0}
+  .spec-photo img{width:128px;height:128px;object-fit:cover;display:block;border:1px solid var(--line2)}
+  .spec-photo .probe{position:absolute;left:50%;bottom:-30px;transform:translateX(-50%);font-family:var(--mono);font-size:10.5px;color:var(--dim);white-space:nowrap}
+  .spec-photo .probe b{color:var(--phos);font-weight:500}
+  .spec-tagline{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--faint);text-transform:uppercase;position:absolute;top:-18px;left:0}
+
+  /* ch1 training */
+  .train-grid{display:flex;gap:28px;flex-wrap:wrap}
+  .train-left{flex:1.2;min-width:300px}
+  .train-right{flex:1;min-width:280px}
+  .chartcard{background:#070a09;border:1px solid var(--line);border-radius:3px;padding:16px}
+  .chartcard canvas{width:100%;height:auto;display:block}
+  .chart-legend{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:10px}
+  .chart-legend i{width:14px;height:2px;display:inline-block;vertical-align:middle;margin-right:6px}
+  .strip{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:4px}
+  .strip img{width:100%;aspect-ratio:1;object-fit:cover;border:2px solid #223028;transition:border-color .3s;display:block;filter:saturate(.85)}
+  .strip img.ok{border-color:var(--phos)}
+  .strip img.bad{border-color:var(--red)}
+  .strip-score{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:10px}
+  .strip-score b{color:var(--phos)}
+
+  /* starfield — full bleed */
+  .bleed{width:100vw;margin-left:calc(50% - 50vw);position:relative}
+  .field-wrap{position:relative;height:76vh;min-height:480px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  #field{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+  #field.grabbing{cursor:grabbing}
+  .field-hud{position:absolute;top:16px;left:20px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);pointer-events:none}
+  .field-hud b{color:var(--phos)}
+  .field-legend{position:absolute;bottom:16px;left:20px;display:flex;gap:16px;font-family:var(--mono);font-size:11px;color:var(--dim);pointer-events:none}
+  .field-legend i{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle}
+  .field-tools{position:absolute;bottom:14px;right:18px;display:flex;gap:8px;align-items:center}
+  .field-peek{position:absolute;pointer-events:none;display:none;z-index:5;background:rgba(7,10,9,.95);border:1px solid var(--phos);border-radius:3px;padding:7px;width:110px}
+  .field-peek img{width:96px;height:96px;object-fit:cover;display:block}
+  .field-peek div{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--phos);margin-top:6px;text-align:center}
+
+  /* duo panels */
+  .duo{display:flex;gap:18px;flex-wrap:wrap}
+  .duo figure{margin:0;flex-shrink:0}
+  .duo canvas{width:220px;height:220px;border:1px solid var(--line2);display:block;background:#05080f}
+  .duo figcaption{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);text-align:center;margin-top:9px}
+  .cam-body{flex:1;min-width:240px}
+
+  /* game */
+  .game-grid{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+  .game-stage{width:280px;max-width:100%;flex-shrink:0}
+  .game-stage canvas{width:100%;aspect-ratio:1;border:1px solid var(--line2);display:block;background:#05080f}
+  .game-body{flex:1;min-width:250px}
+  .game-score{display:flex;gap:30px;margin:14px 0}
+  .game-score .n{font-family:var(--serif);font-size:38px;font-weight:500;color:var(--phos)}
+  .game-score .n.you{color:var(--amber)}
+  .game-score .l{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+  .game-msg{min-height:3.2em;color:#B4BBB2;font-size:15.5px}
+
+  /* webcam */
+  .cam-video-wrap{position:relative;width:280px;max-width:100%;flex-shrink:0}
+  .cam-video-wrap video{width:100%;aspect-ratio:1;object-fit:cover;border:1px solid var(--line2);background:#05080f;display:block}
+  .shots{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;min-height:40px}
+  .shots img{width:38px;height:38px;object-fit:cover;border:1px solid var(--line2)}
+  .cls-name{font-family:var(--mono);font-size:13px;background:#0c100e;border:1px solid var(--line2);color:var(--ink);border-radius:3px;padding:9px 12px;width:150px}
+
+  /* duel */
+  .duel{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px}
+  .duel>div{flex:1;min-width:220px;background:#070a09;border:1px solid var(--line);border-radius:3px;padding:16px}
+  .duel .who{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+  .duel .say{font-family:var(--serif);font-size:19px;font-weight:480;min-height:2.6em}
+  .duel .say .pct{color:var(--phos);font-family:var(--mono);font-size:.82em}
+  .duel .say .idk{color:var(--phos);font-style:italic}
+
+  /* finale */
+  .outro{max-width:860px;margin:0 auto;padding:16vh 5vw 6vh;text-align:center}
+  .outro h2{font-family:var(--serif);font-weight:400;font-size:clamp(34px,5.6vw,66px);line-height:1.05;letter-spacing:-.01em}
+  .outro h2 em{font-style:italic;color:var(--phos)}
+  .outro p{color:#ADB5AC;font-size:18.5px;margin-top:24px;text-align:left}
+  .report-wrap{margin-top:44px}
+  #report{width:100%;max-width:520px;border:1px solid var(--line2)}
+  .loading::after{content:'';animation:dots 1.4s steps(4,end) infinite}
+  @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+
+  footer{border-top:1px solid var(--line);margin-top:10vh;padding:36px 5vw;text-align:center;color:var(--faint);font-size:13px;font-family:var(--mono)}
+  footer a{color:var(--dim)} footer a:hover{color:var(--phos)}
+
+  @media (max-width:700px){
+    .strip{grid-template-columns:repeat(5,1fr)}
+    .duo canvas{width:160px;height:160px}
+    .hud .r{display:none}
+    .front .ghost{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="grain"></div><div class="vig"></div>
+<div class="rail" id="rail"></div>
+
+<div class="hud">
+  <span class="l">RAISE THE MACHINE · <b>SPECIMEN LAB</b></span>
+  <span class="r" id="hud-r">BOOTING<span class="loading"></span></span>
+</div>
+
+<div class="lablog min" id="lablog">
+  <div class="lablog__bar" id="lablog-bar"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:270px"><i></i><span id="lablog-last">EXPERIMENT LOG</span></span><span id="lablog-tgl">—</span></div>
+  <div class="lablog__body" id="lablog-body"></div>
+</div>
+
+<!-- ===== HERO ===== -->
+<section class="hero">
+  <canvas id="hero-bg"></canvas>
+  <div class="hero__scrim"></div>
+  <div class="hero__in">
+    <div class="kick">A working laboratory · nothing is simulated</div>
+    <h1 style="margin-top:26px">Raise the<br><em>machine.</em></h1>
+    <p class="sub">Behind this page is a real neural network — 2.3&nbsp;million learned numbers that can tell a dog from a cat. You are not going to read about it. You are going to train it, map its mind, deceive it, race it, and correct it. Seven experiments. Everything runs here, in your browser.</p>
+    <div class="bootlog" id="bootlog"></div>
+    <div class="cue"><i></i>scroll to begin experiment 01</div>
+  </div>
+</section>
+
+<!-- ===== EXPERIMENT 1 ===== -->
+<div class="front">
+  <div class="ghost">01</div>
+  <div class="ref">Experiment 01 · ref lab/e1 · training</div>
+  <h2>Teach it, from <em>nothing</em>, in seconds.</h2>
+  <p class="lede">Bolted onto the machine&rsquo;s eyes is a brand-new decision-maker that has never seen an animal. It will learn dogs-versus-cats from 200 photographs while you watch — and sit an exam of 40 photos it is never allowed to study.</p>
+  <p class="mvoice mnote">decision weights randomised. i currently answer by coin flip. show me the photographs.</p>
+</div>
+<section class="lab" id="ex1">
+  <div class="panel brk">
+    <div class="tag">bench 01 · live training</div>
+    <div class="lab__title">Supervised learning, witnessed</div>
+    <div class="lab__instr">Red border: it called the exam photo wrong. Watch the borders turn as the epochs pass.</div>
+    <div class="train-grid">
+      <div class="train-left">
+        <div class="chartcard">
+          <canvas id="t-chart" width="520" height="300"></canvas>
+          <div class="chart-legend">
+            <span><i style="background:#3a4a43"></i>study photos</span>
+            <span><i style="background:#53F1B6"></i>held-out photos — the score that counts</span>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="t-go" disabled>Loading bench&hellip;</button>
+          <div class="prog" id="t-prog"></div>
+        </div>
+      </div>
+      <div class="train-right">
+        <div class="strip" id="t-strip"></div>
+        <div class="strip-score" id="t-score">exam: —</div>
+      </div>
+    </div>
+  </div>
+</section>
+<div class="note"><div class="note__box"><div class="note__label">What just happened</div>
+  <p>The machine&rsquo;s <strong>eyes</strong> — dozens of pattern-finding layers — stayed frozen; they already know edges, fur, and shapes. You trained only the final <strong>decision</strong>: a few hundred numbers mapping &ldquo;what the eyes report&rdquo; to dog-or-cat. Borrowing trained eyes and teaching a new decision is called <strong>transfer learning</strong>, and it is how most real AI products are actually built.</p>
+</div></div>
+
+<div class="divider"><canvas data-div="0"></canvas></div>
+
+<!-- ===== EXPERIMENT 2 ===== -->
+<div class="front">
+  <div class="ghost">02</div>
+  <div class="ref">Experiment 02 · ref lab/e2 · cartography</div>
+  <h2>The space where it <em>thinks.</em></h2>
+  <p class="lede">Just before deciding, the machine has compressed every photograph into a single point in an abstract space — dogs gathering in one region, cats in another. This is that space, flattened so a human can walk it. Drag to pan. Scroll to dive.</p>
+  <p class="mvoice mnote">to me, every photograph is a location. things that are alike are simply things that are near.</p>
+</div>
+<section class="bleed" id="ex2">
+  <div class="field-wrap">
+    <canvas id="field"></canvas>
+    <div class="field-hud">EMBEDDING ATLAS · <b id="field-count">—</b> SPECIMENS · <b id="field-zoom">1.0×</b></div>
+    <div class="field-legend">
+      <span><i style="background:#53F1B6"></i>dogs</span>
+      <span><i style="background:#A78BFA"></i>cats</span>
+      <span><i style="background:#FFB454"></i>your photo</span>
+    </div>
+    <div class="field-tools">
+      <label class="chip">⬆ drop your photo in<input type="file" id="field-upload" accept="image/*"></label>
+    </div>
+    <div class="field-peek" id="field-peek"><img alt=""><div></div></div>
+  </div>
+  <div class="lab" style="margin-top:14px"><div class="prog" id="field-prog"></div></div>
+</section>
+<div class="note"><div class="note__box"><div class="note__label">Why this matters</div>
+  <p>&ldquo;Learning&rdquo; is exactly this: finding a squashing of 67,500 pixel numbers down to a point, such that kinds gather. Photos stranded between the two clouds are the ones the machine hesitates on. Every modern AI — chatbots included — organises its knowledge as geometry like this.</p>
+</div></div>
+
+<div class="divider"><canvas data-div="1"></canvas></div>
+
+<!-- ===== SPECIMEN INTAKE ===== -->
+<div class="front">
+  <div class="ghost">03</div>
+  <div class="ref">Experiments 03 &amp; 04 · specimen intake</div>
+  <h2>Interrogate it. Then <em>betray</em> it.</h2>
+  <p class="lede">Register the photograph the next two experiments will operate on. Move your cursor across it — the readout shows the raw numbers the machine actually receives.</p>
+</div>
+<section class="specimen">
+  <div class="panel brk">
+    <div class="tag">intake</div>
+    <div class="spec-card">
+      <div class="spec-photo">
+        <div class="spec-tagline" id="sp-tag">SPEC-001</div>
+        <img id="sp-thumb" alt="The registered specimen photograph">
+        <div class="probe" id="sp-probe">hover · px[—,—] rgb —</div>
+      </div>
+      <div style="flex:1;min-width:230px">
+        <div class="verdict" id="sp-verdict">Waking the machine&hellip;</div>
+        <div class="chips" style="margin-top:14px">
+          <button class="chip chip--active" data-sample="dog">🐕 sample dog</button>
+          <button class="chip" data-sample="cat">🐈 sample cat</button>
+          <label class="chip">⬆ your own<input type="file" id="sp-upload" accept="image/*"></label>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== EXPERIMENT 3 ===== -->
+<section class="lab" id="ex3" style="margin-top:7vh">
+  <div class="panel brk">
+    <div class="tag">bench 03 · gradient attribution</div>
+    <div class="lab__title">Read its mind, exactly</div>
+    <div class="lab__instr">The decision is traced backwards through every layer to the pixels that pushed it. One pass, mathematically exact — the bright regions are the evidence.</div>
+    <div class="duo">
+      <figure><canvas id="cam-src" width="150" height="150"></canvas><figcaption>what you see</figcaption></figure>
+      <figure><canvas id="cam-out" width="300" height="300"></canvas><figcaption>what moved its decision</figcaption></figure>
+      <div class="cam-body">
+        <div class="verdict" id="cam-verdict">—</div>
+        <p class="explain" id="cam-explain" style="margin-top:10px">Waiting for the model&hellip;</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== EXPERIMENT 4 ===== -->
+<div class="front">
+  <div class="ghost">04</div>
+  <div class="ref" style="color:var(--red)">Experiment 04 · ref lab/e4 · adversarial · caution</div>
+  <h2>Fool it with pixels you <em>cannot see.</em></h2>
+  <p class="lede">The same backwards trace that reads its mind can be weaponised. If we know which pixels push the decision, we can nudge each one — too faintly for any human eye — until the machine flips its verdict entirely.</p>
+  <p class="mvoice mnote">warning. you are about to use my own gradients against me. i will not notice.</p>
+</div>
+<section class="lab" id="ex4">
+  <div class="panel panel--warn brk">
+    <div class="tag">bench 04 · live attack</div>
+    <div class="lab__title">The invisible disguise</div>
+    <div class="lab__instr">Press attack. The machine computes the perfect whisper of noise to change its own mind.</div>
+    <div class="duo">
+      <figure><canvas id="adv-out" width="150" height="150"></canvas><figcaption id="adv-out-cap">the photo</figcaption></figure>
+      <figure><canvas id="adv-diff" width="150" height="150"></canvas><figcaption>the added noise ×20</figcaption></figure>
+      <div class="cam-body">
+        <div class="verdict" id="adv-verdict">—</div>
+        <div class="bar"><i id="adv-fill"></i></div>
+        <p class="explain" id="adv-explain" style="margin-top:8px">Watch the verdict, not the photo — the photo will not visibly change.</p>
+        <div style="margin-top:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn--amber" id="adv-go" disabled>⚡ run the attack</button>
+          <div class="prog" id="adv-prog"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<div class="note"><div class="note__box note__box--warn"><div class="note__label">Let that sink in</div>
+  <p>The photograph on your screen did not change in any way your eye can measure — and the machine went from near-certain one way to near-certain the other. Machine sight and human sight are <strong>different senses</strong> that happen to agree most of the time. The same trick has fooled real vision systems reading stop signs.</p>
+</div></div>
+
+<div class="divider"><canvas data-div="2"></canvas></div>
+
+<!-- ===== EXPERIMENT 5 ===== -->
+<div class="front">
+  <div class="ghost">05</div>
+  <div class="ref">Experiment 05 · ref lab/e5 · comparative perception</div>
+  <h2>You, versus <em>it.</em></h2>
+  <p class="lede">Five rounds. A photograph appears almost totally blurred, then sharpens. The machine locks a guess at every blur level; answer whenever you dare. The earlier you answer, the more it&rsquo;s worth.</p>
+  <p class="mvoice mnote">i do not see outlines the way you do. i see texture statistics. blur is kinder to me than to you.</p>
+</div>
+<section class="lab" id="ex5">
+  <div class="panel brk">
+    <div class="tag">bench 05 · the blur duel</div>
+    <div class="lab__title">Who needs fewer pixels?</div>
+    <div class="lab__instr">Guess at heavy blur for 5 points, down to 1 at full sharpness. The machine is scored at whatever blur level you chose.</div>
+    <div class="game-grid">
+      <div class="game-stage">
+        <canvas id="g-canvas" width="300" height="300"></canvas>
+        <div class="prog" id="g-level" style="margin-top:10px;text-align:center"></div>
+      </div>
+      <div class="game-body">
+        <div class="game-score">
+          <div><div class="n you" id="g-you">0</div><div class="l">you</div></div>
+          <div><div class="n" id="g-bot">0</div><div class="l">machine</div></div>
+          <div><div class="n" style="color:var(--faint)" id="g-round">–</div><div class="l">round</div></div>
+        </div>
+        <p class="game-msg" id="g-msg">Press start when you&rsquo;re ready.</p>
+        <div class="chips" style="margin-top:10px">
+          <button class="btn" id="g-start">▶ start the duel</button>
+          <button class="chip" id="g-dog" hidden>🐕 dog</button>
+          <button class="chip" id="g-cat" hidden>🐈 cat</button>
+          <button class="chip" id="g-more" hidden>🔍 sharpen (worth less)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"><canvas data-div="3"></canvas></div>
+
+<!-- ===== EXPERIMENT 6 ===== -->
+<div class="front">
+  <div class="ghost">06</div>
+  <div class="ref">Experiment 06 · ref lab/e6 · few-shot</div>
+  <h2>Teach it <em>your</em> things.</h2>
+  <p class="lede">Dogs and cats were only the demonstration. The machine&rsquo;s frozen eyes can describe almost anything — so hand it two objects from your desk. A mug versus a phone. Your left hand versus your right.</p>
+  <p class="mvoice mnote">six photographs of each will do. i have seen a million objects before yours. vary the angle.</p>
+</div>
+<section class="lab" id="ex6">
+  <div class="panel brk">
+    <div class="tag">bench 06 · your classifier</div>
+    <div class="lab__title">A recogniser of your own, in under a minute</div>
+    <div class="lab__instr">Name two things, capture ~6 shots of each, train — then point the camera and watch it recognise them live.</div>
+    <div class="lab__stage">
+      <div class="cam-video-wrap">
+        <video id="wc-video" autoplay playsinline muted></video>
+        <div style="margin-top:10px"><button class="btn" id="wc-enable" style="width:100%">🎥 enable camera</button></div>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+          <input class="cls-name" id="wc-name-a" value="Thing A" maxlength="14">
+          <button class="chip" id="wc-shot-a" disabled>📸 capture</button>
+        </div>
+        <div class="shots" id="wc-shots-a"></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 6px">
+          <input class="cls-name" id="wc-name-b" value="Thing B" maxlength="14">
+          <button class="chip" id="wc-shot-b" disabled>📸 capture</button>
+        </div>
+        <div class="shots" id="wc-shots-b"></div>
+        <div style="margin-top:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="wc-train" disabled>train on my things</button>
+          <div class="prog" id="wc-prog">Need at least 4 shots of each.</div>
+        </div>
+        <div class="verdict" id="wc-verdict" style="margin-top:14px"></div>
+        <div class="bar"><i id="wc-fill"></i></div>
+      </div>
+    </div>
+  </div>
+</section>
+<div class="note"><div class="note__box"><div class="note__label">You just did what the professionals do</div>
+  <p>Take a large pre-trained model, freeze it, teach a thin new layer on a handful of your own examples. You didn&rsquo;t need 20,000 photos, because the hard part — learning to <em>see</em> — was already done.</p>
+</div></div>
+
+<div class="divider"><canvas data-div="4"></canvas></div>
+
+<!-- ===== EXPERIMENT 7 ===== -->
+<div class="front">
+  <div class="ghost">07</div>
+  <div class="ref">Experiment 07 · ref lab/e7 · the correction</div>
+  <h2>Teach it to say <em>&ldquo;I don&rsquo;t know.&rdquo;</em></h2>
+  <p class="lede">Show this machine television static and it will declare, with total confidence, that it is looking at a dog. Not because it is stupid — because <strong>nobody built the option to refuse</strong>. You are the builder now. Build it.</p>
+  <p class="mvoice mnote">i have exactly two words. give me a third and i will use it.</p>
+</div>
+<section class="lab" id="ex7">
+  <div class="panel brk">
+    <div class="tag">bench 07 · the third word</div>
+    <div class="lab__title">Give it the word &ldquo;neither&rdquo;</div>
+    <div class="lab__instr">A third class, trained on garbage — static, blank colours, scrambled photographs. Then face the old two-word machine against your corrected one.</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <button class="btn" id="fx-train" disabled>🔧 train the corrected machine</button>
+      <div class="prog" id="fx-prog"></div>
+    </div>
+    <div class="lab__stage" style="margin-top:22px">
+      <canvas id="fx-thumb" width="150" height="150" style="width:150px;height:150px;border:1px solid var(--line2);background:#05080f;flex-shrink:0"></canvas>
+      <div style="flex:1;min-width:260px">
+        <div class="chips">
+          <button class="chip" data-fx="noise" disabled>📺 tv static</button>
+          <button class="chip" data-fx="solid" disabled>🟦 blank square</button>
+          <button class="chip" data-fx="scramble" disabled>🧩 scrambled dog</button>
+          <button class="chip" data-fx="dog" disabled>🐕 a real dog</button>
+          <label class="chip">⬆ anything else<input type="file" id="fx-upload" accept="image/*" disabled></label>
+        </div>
+        <div class="duel">
+          <div><div class="who">the old machine · two words</div><div class="say" id="fx-old">—</div></div>
+          <div><div class="who">your machine · three words</div><div class="say" id="fx-new">—</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<div class="note"><div class="note__box note__box--sum"><div class="note__label">The lesson, completed</div>
+  <p>&ldquo;I don&rsquo;t know&rdquo; was never a missing miracle — it was a missing <strong>decision by a person</strong>. You made that decision, generated the training data for it, and shipped the correction in ten seconds. When you evaluate any AI product, ask the question you just answered: <em>what did its builders decide it should do with the unexpected?</em></p>
+</div></div>
+
+<!-- ===== FINALE ===== -->
+<section class="outro">
+  <div class="kick" style="margin-bottom:24px">end of session · field report</div>
+  <h2>You didn&rsquo;t watch a machine learn.<br>You <em>made</em> one.</h2>
+  <p>In one sitting you trained a neural network, mapped the space it thinks in, traced a decision backwards through its layers, forged an invisible disguise that fooled it, raced it on raw perception, taught it objects from your own desk, and gave it the humility its makers left out. That is not a metaphor for how modern AI is built. It is, at small scale, exactly how modern AI is built.</p>
+  <div class="report-wrap">
+    <canvas id="report" width="1080" height="1440"></canvas>
+    <div style="margin-top:18px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button class="btn" id="rep-dl">⬇ download the field report</button>
+    </div>
+  </div>
+</section>
+
+<footer>
+  RAISE THE MACHINE · a project by Navneet from <a href="https://www.airtribe.live/" target="_blank" rel="noopener">Airtribe</a><br>
+  <span style="opacity:.7">prefer to watch before you build? <a href="index.html">the companion explainer</a> · <a href="https://github.com/NavSha/dogs-vs-cats" target="_blank" rel="noopener">source on GitHub</a></span>
+</footer>
+
+<script>
+(function(){
+'use strict';
+const IMG=150, EMB=1280;
+const REDUCED=matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+/* ================= shared core ================= */
+function tfReady(){return new Promise(r=>{if(window.tf)return r(window.tf);const t=setInterval(()=>{if(window.tf){clearInterval(t);r(window.tf);}},40);});}
+let _clf=null;
+function classifier(){return _clf||(_clf=tfReady().then(tf=>tf.loadLayersModel('model/model.json')));}
+let _chain=Promise.resolve();
+function runExclusive(fn){const n=_chain.then(fn,fn);_chain=n.catch(()=>{});return n;}
+
+let _parts=null;
+async function parts(){
+  if(_parts)return _parts;
+  const tf=await tfReady(); const clf=await classifier();
+  const backbone=clf.getLayer('mobilenetv2_1.00_224');
+  const gap=clf.getLayer('global_average_pooling2d');
+  const d1=clf.getLayer('dense'), d2=clf.getLayer('dense_1');
+  const convShape=backbone.outputShape.slice(1);
+  const hin=tf.input({shape:convShape});
+  const head=tf.model({inputs:hin,outputs:d2.apply(d1.apply(gap.apply(hin)))});
+  _parts={tf,clf,backbone,head,convShape};
+  return _parts;
+}
+function canvasTensor(tf,cv){return tf.tidy(()=>tf.browser.fromPixels(cv).toFloat().div(255).expandDims(0));}
+async function embedCanvas(cv){
+  const p=await parts();
+  const t=p.tf.tidy(()=>p.backbone.apply(canvasTensor(p.tf,cv)).mean([1,2]));
+  const d=await t.data(); t.dispose(); return d;
+}
+function loadImage(src){return new Promise((res,rej)=>{const i=new Image();i.crossOrigin='anonymous';i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
+function coverDraw(ctx,img,size){const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;const s=Math.min(w,h);ctx.drawImage(img,(w-s)/2,(h-s)/2,s,s,0,0,size,size);}
+
+/* ================= HUD / log ================= */
+const hudR=document.getElementById('hud-r');
+function hud(html){hudR.innerHTML=html;}
+const logBody=document.getElementById('lablog-body'),lablog=document.getElementById('lablog');
+document.getElementById('lablog-bar').addEventListener('click',()=>{lablog.classList.toggle('min');document.getElementById('lablog-tgl').textContent=lablog.classList.contains('min')?'+':'—';});
+function llog(msg){
+  const d=new Date(),ts=[d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':');
+  const el=document.createElement('div');el.innerHTML='<span>'+ts+'</span>'+msg;
+  logBody.appendChild(el);
+  document.getElementById('lablog-last').textContent=msg;
+  while(logBody.children.length>60)logBody.removeChild(logBody.firstChild);
+}
+llog('session opened');
+document.getElementById('lablog-tgl').textContent='+';
+
+/* progress rail */
+const rail=document.getElementById('rail');
+addEventListener('scroll',()=>{const h=document.documentElement;rail.style.width=(h.scrollTop/(h.scrollHeight-h.clientHeight)*100)+'%';},{passive:true});
+function onEnter(sel,cb,margin){const el=document.querySelector(sel);if(!el)return;const o=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){o.disconnect();cb();}},{rootMargin:margin||'200px'});o.observe(el);}
+
+/* ================= boot sequence ================= */
+const bootEl=document.getElementById('bootlog');
+function bootLine(txt,pending){
+  const el=document.createElement('div');el.textContent=txt;if(!pending)el.className='ok';
+  bootEl.appendChild(el);return el;
+}
+(async function boot(){
+  let l=bootLine('loading tensorflow.js runtime …',true);
+  await tfReady(); l.className='ok';
+  l=bootLine('loading learned weights · 2,300,000 parameters …',true);
+  await classifier(); l.className='ok';
+  l=bootLine('deriving feature extractor + gradient taps …',true);
+  await parts(); l.className='ok';
+  bootLine('LAB READY — all experiments live',true).style.color='var(--phos)';
+  llog('model online · 2.3M parameters');
+})();
+
+/* ================= hero background: real activations ================= */
+(function(){
+  const cv=document.getElementById('hero-bg');const ctx=cv.getContext('2d');
+  let tiles=[],ti=0,alpha=0,mode='noise';
+  function size(){cv.width=Math.min(1400,innerWidth);cv.height=Math.round(cv.width*(innerHeight/innerWidth));}
+  size();addEventListener('resize',size);
+  // procedural scan-noise until the model wakes
+  function noiseFrame(){
+    const w=90,h=Math.round(w*cv.height/cv.width);
+    const t=document.createElement('canvas');t.width=w;t.height=h;
+    const x=t.getContext('2d');const im=x.createImageData(w,h);
+    for(let i=0;i<w*h;i++){const v=Math.random()*Math.random()*255;im.data[i*4]=v*.28;im.data[i*4+1]=v*.9;im.data[i*4+2]=v*.66;im.data[i*4+3]=255;}
+    x.putImageData(im,0,0);
+    ctx.imageSmoothingEnabled=true;ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.globalAlpha=.7;ctx.drawImage(t,0,0,cv.width,cv.height);ctx.globalAlpha=1;
+  }
+  let noiseTimer=setInterval(noiseFrame,120);noiseFrame();
+  async function buildTiles(){
+    try{
+      const p=await parts(),tf=p.tf;
+      // pick two mid-depth layers inside the backbone by shape
+      const cands=p.backbone.layers.filter(l=>{const s=l.outputShape;return Array.isArray(s)&&s.length===4&&s[1]>=19&&s[1]<=80&&s[3]>=32;});
+      const picks=[cands[Math.floor(cands.length*.25)],cands[Math.floor(cands.length*.6)]].filter(Boolean);
+      if(!picks.length)return;
+      const sub=tf.model({inputs:p.backbone.inputs,outputs:picks.map(l=>l.output)});
+      const img=await loadImage('samples/dog.jpg');
+      const c=document.createElement('canvas');c.width=IMG;c.height=IMG;coverDraw(c.getContext('2d'),img,IMG);
+      const outs=sub.predict(canvasTensor(tf,c));
+      const list=Array.isArray(outs)?outs:[outs];
+      for(const t of list){
+        const [,h,w,ch]=t.shape;
+        for(let k=0;k<5;k++){
+          const ci=Math.floor(ch*(k+.5)/5);
+          const n=tf.tidy(()=>{const m=t.slice([0,0,0,ci],[1,h,w,1]).squeeze();const mn=m.min(),mx=m.max();return m.sub(mn).div(mx.sub(mn).add(1e-6));});
+          const d=await n.data();n.dispose();
+          const tc=document.createElement('canvas');tc.width=w;tc.height=h;
+          const im=tc.getContext('2d').createImageData(w,h);
+          for(let i=0;i<w*h;i++){const v=d[i];im.data[i*4]=Math.round(v*70);im.data[i*4+1]=Math.round(v*235);im.data[i*4+2]=Math.round(v*170);im.data[i*4+3]=255;}
+          tc.getContext('2d').putImageData(im,0,0);
+          tiles.push(tc);
+        }
+      }
+      tf.dispose(list);
+      clearInterval(noiseTimer);mode='act';
+      llog('hero: painting with live feature maps');
+      if(REDUCED){drawAct(0,1);return;}
+      requestAnimationFrame(loop);
+    }catch(e){console.error('herobg',e);}
+  }
+  function drawAct(i,a,off){
+    ctx.imageSmoothingEnabled=true;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    const A=tiles[i%tiles.length],B=tiles[(i+1)%tiles.length];
+    ctx.globalAlpha=1-a;ctx.drawImage(A,-40+(off||0),-30,cv.width+80,cv.height+60);
+    ctx.globalAlpha=a;ctx.drawImage(B,-40-(off||0),-30,cv.width+80,cv.height+60);
+    ctx.globalAlpha=1;
+  }
+  let t0=null;
+  function loop(ts){
+    if(mode!=='act')return;
+    if(!t0)t0=ts;
+    const t=(ts-t0)/1000;
+    const per=6, ph=(t%per)/per;
+    const i=Math.floor(t/per);
+    const a=ph<.7?0:(ph-.7)/.3;
+    drawAct(i,a,Math.sin(t*.15)*30);
+    requestAnimationFrame(loop);
+  }
+  buildTiles();
+})();
+
+/* ================= dataset ================= */
+let _data=null;
+async function dataset(progressCb){
+  if(_data)return _data;
+  const man=await (await fetch('lab-data/manifest.json')).json();
+  const items=[];
+  ['dog','cat'].forEach(cls=>{
+    man.train[cls].forEach(f=>items.push({cls,file:f,split:'train'}));
+    man.strip[cls].forEach(f=>items.push({cls,file:f,split:'strip'}));
+  });
+  for(let i=0;i<items.length;i+=12){
+    await Promise.all(items.slice(i,i+12).map(async it=>{it.img=await loadImage('lab-data/'+it.file);}));
+    if(progressCb)progressCb('loading specimens… '+Math.min(items.length,i+12)+'/'+items.length);
+  }
+  const p=await parts();
+  const cv=document.createElement('canvas');cv.width=IMG;cv.height=IMG;const cx=cv.getContext('2d');
+  const B=12;
+  for(let i=0;i<items.length;i+=B){
+    const batch=items.slice(i,i+B);
+    const t=p.tf.tidy(()=>{
+      const ts=batch.map(it=>{cx.clearRect(0,0,IMG,IMG);coverDraw(cx,it.img,IMG);return p.tf.browser.fromPixels(cv).toFloat().div(255);});
+      return p.backbone.apply(p.tf.stack(ts)).mean([1,2]);
+    });
+    const d=await t.data(); t.dispose();
+    batch.forEach((it,j)=>{it.emb=d.slice(j*EMB,(j+1)*EMB);});
+    if(progressCb)progressCb('machine describing specimens… '+Math.min(items.length,i+B)+'/'+items.length);
+    await p.tf.nextFrame();
+  }
+  llog('240 specimens embedded');
+  _data={items,train:items.filter(i=>i.split==='train'),strip:items.filter(i=>i.split==='strip')};
+  paintDividers();
+  return _data;
+}
+
+async function freshHead(units,out){
+  const tf=await tfReady();
+  const m=tf.sequential();
+  m.add(tf.layers.dense({inputShape:[EMB],units:units,activation:'relu'}));
+  m.add(tf.layers.dense(out===1?{units:1,activation:'sigmoid'}:{units:out,activation:'softmax'}));
+  m.compile({optimizer:tf.train.adam(.001),loss:out===1?'binaryCrossentropy':'categoricalCrossentropy',metrics:['accuracy']});
+  return m;
+}
+
+/* ================= data dividers ================= */
+function paintDividers(){
+  document.querySelectorAll('.divider canvas').forEach((cv,di)=>{
+    cv.width=cv.clientWidth||1200;cv.height=56;
+    const ctx=cv.getContext('2d');
+    if(di===1&&_data){ // embedding scatter strip
+      ctx.clearRect(0,0,cv.width,cv.height);
+      _data.items.forEach((it,i)=>{
+        ctx.fillStyle=it.cls==='dog'?'rgba(83,241,182,.5)':'rgba(167,139,250,.5)';
+        const x=(i*97%cv.width),y=8+(i*61%(cv.height-16));
+        ctx.fillRect(x,y,2,2);
+      });
+    }else if(di===2){ // adversarial noise strip
+      const im=ctx.createImageData(cv.width,cv.height);
+      for(let i=0;i<im.data.length;i+=4){const v=Math.random()*90;im.data[i]=v*1.6;im.data[i+1]=v*.9;im.data[i+2]=v*.5;im.data[i+3]=255;}
+      ctx.putImageData(im,0,0);
+    }else{ // scanline texture
+      ctx.clearRect(0,0,cv.width,cv.height);
+      for(let y=0;y<cv.height;y+=3){
+        ctx.fillStyle='rgba(83,241,182,'+(0.03+0.10*Math.abs(Math.sin(y*.4+di)))+')';
+        ctx.fillRect(0,y,cv.width,1);
+      }
+      for(let i=0;i<80;i++){ctx.fillStyle='rgba(83,241,182,.25)';ctx.fillRect(Math.random()*cv.width,Math.random()*cv.height,2,1);}
+    }
+  });
+}
+paintDividers();addEventListener('resize',paintDividers);
+
+/* ================= EXPERIMENT 1 ================= */
+const ex1={history:null,bestVal:0};
+(function(){
+  const chart=document.getElementById('t-chart'),go=document.getElementById('t-go'),prog=document.getElementById('t-prog');
+  const stripEl=document.getElementById('t-strip'),scoreEl=document.getElementById('t-score');
+  let stripImgs=[],ready=false;
+
+  function drawChart(hist){
+    const ctx=chart.getContext('2d'),W=chart.width,H=chart.height;
+    const pl=46,pr=14,pt=18,pb=34,yMin=.4,yMax=1,EP=25;
+    const X=i=>pl+(W-pl-pr)*(i/(EP-1)),Y=v=>pt+(H-pt-pb)*(1-(Math.max(yMin,v)-yMin)/(yMax-yMin));
+    ctx.clearRect(0,0,W,H);
+    // graph paper
+    ctx.strokeStyle='rgba(83,241,182,.05)';ctx.lineWidth=1;
+    for(let x=pl;x<=W-pr;x+=(W-pl-pr)/24){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,H-pb);ctx.stroke();}
+    ctx.font='11px "JetBrains Mono",monospace';
+    [.5,.75,1].forEach(v=>{ctx.strokeStyle='rgba(83,241,182,.12)';ctx.beginPath();ctx.moveTo(pl,Y(v));ctx.lineTo(W-pr,Y(v));ctx.stroke();ctx.fillStyle='#4d5651';ctx.textAlign='right';ctx.textBaseline='middle';ctx.fillText((v*100)+'%',pl-8,Y(v));});
+    ctx.fillStyle='#4d5651';ctx.textBaseline='top';ctx.textAlign='left';ctx.fillText('epoch 1',pl,H-pb+8);ctx.textAlign='right';ctx.fillText('epoch '+EP,W-pr,H-pb+8);
+    ctx.strokeStyle='rgba(135,145,139,.35)';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(pl,Y(.5));ctx.lineTo(W-pr,Y(.5));ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#4d5651';ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText('coin flip',pl+4,Y(.5)-3);
+    if(!hist)return;
+    const line=(arr,color,w,glow)=>{ctx.strokeStyle=color;ctx.lineWidth=w;ctx.lineJoin='round';ctx.shadowColor=glow?color:'transparent';ctx.shadowBlur=glow?7:0;ctx.beginPath();arr.forEach((v,i)=>i?ctx.lineTo(X(i),Y(v)):ctx.moveTo(X(i),Y(v)));ctx.stroke();ctx.shadowBlur=0;};
+    line(hist.acc,'#3a4a43',2,false);line(hist.val,'#53F1B6',2.5,true);
+  }
+
+  function paintStrip(preds){
+    _data.strip.forEach((it,i)=>{
+      const el=stripImgs[i];if(!el)return;
+      if(!preds){el.className='';return;}
+      const saysDog=preds[i]>=.5, ok=(saysDog?'dog':'cat')===it.cls;
+      el.className=ok?'ok':'bad';
+    });
+    if(preds){const n=_data.strip.reduce((a,it,i)=>a+(((preds[i]>=.5?'dog':'cat')===it.cls)?1:0),0);
+      scoreEl.innerHTML='exam: <b>'+n+' / '+_data.strip.length+'</b> correct';return n;}
+    scoreEl.textContent='exam: —';
+  }
+
+  async function setup(){
+    drawChart(null);
+    prog.textContent='loading photos + warming up…';
+    try{
+      await dataset(m=>prog.textContent=m);
+      _data.strip.forEach(it=>{const im=document.createElement('img');im.src='lab-data/'+it.file;im.alt=it.cls;stripEl.appendChild(im);stripImgs.push(im);});
+      ready=true;go.disabled=false;go.textContent='▶ begin training';prog.textContent='200 study photos + 40 exam photos on the bench.';
+    }catch(e){console.error(e);prog.textContent='Could not load the lab data.';}
+  }
+
+  go.addEventListener('click',()=>runExclusive(async()=>{
+    if(!ready)return; go.disabled=true;
+    llog('E1: training started');
+    const tf=await tfReady();
+    const head=await freshHead(32,1);
+    const tr=_data.train;
+    const xs=tf.tensor2d(tr.map(i=>Array.from(i.emb)));
+    const ys=tf.tensor2d(tr.map(i=>[i.cls==='dog'?1:0]));
+    const sx=tf.tensor2d(_data.strip.map(i=>Array.from(i.emb)));
+    let pr=await head.predict(sx).data(); paintStrip(pr);
+    const hist={acc:[],val:[]};
+    await head.fit(xs,ys,{epochs:25,batchSize:32,validationSplit:.2,shuffle:true,callbacks:{
+      onEpochEnd:async(ep,logs)=>{
+        hist.acc.push(logs.acc??logs.accuracy);hist.val.push(logs.val_acc??logs.val_accuracy);
+        drawChart(hist);
+        const o=head.predict(sx);const d=await o.data();o.dispose();
+        const n=paintStrip(d);
+        prog.textContent='epoch '+(ep+1)+'/25 · exam '+n+'/40';
+        if(ep%5===4)llog('E1: epoch '+(ep+1)+' · exam '+n+'/40');
+        await tf.nextFrame();
+      }
+    }});
+    const o=head.predict(sx);const d=await o.data();o.dispose();
+    const n=paintStrip(d);
+    ex1.history=hist; ex1.bestVal=Math.max.apply(null,hist.val); ex1.exam=n;
+    prog.textContent='done · final exam '+n+'/40 on photos it never studied. Run it again — it grows a slightly different brain every time.';
+    llog('E1: complete · exam '+n+'/40');
+    tf.dispose([xs,ys,sx]); head.dispose?.();
+    go.disabled=false; go.textContent='↻ retrain from scratch';
+    reportDraw();
+  }));
+
+  onEnter('#ex1',()=>runExclusive(setup));
+})();
+
+/* ================= EXPERIMENT 2 : atlas ================= */
+const ex2={placed:false,pts:null,user:null};
+(function(){
+  const field=document.getElementById('field'),peek=document.getElementById('field-peek');
+  const peekImg=peek.querySelector('img'),peekLbl=peek.querySelector('div');
+  const prog=document.getElementById('field-prog'),countEl=document.getElementById('field-count'),zoomEl=document.getElementById('field-zoom');
+  const up=document.getElementById('field-upload');
+  const wrap=field.parentElement;
+  let pts=null,fPC=null,mean=null;
+  let cam={x:.5,y:.5,z:1},tgt={x:.5,y:.5,z:1};
+  let hoverI=-1,visible=false,raf=null,glowD=null,glowC=null,glowU=null;
+
+  function mkGlow(color){
+    const c=document.createElement('canvas');c.width=c.height=48;
+    const g=c.getContext('2d');const gr=g.createRadialGradient(24,24,0,24,24,24);
+    gr.addColorStop(0,color);gr.addColorStop(.35,color.replace(')',',.5)').replace('rgb','rgba'));gr.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=gr;g.fillRect(0,0,48,48);return c;
+  }
+  glowD=mkGlow('rgb(83,241,182)');glowC=mkGlow('rgb(167,139,250)');glowU=mkGlow('rgb(255,180,84)');
+
+  function pca(items){
+    const n=items.length;
+    mean=new Float32Array(EMB);
+    items.forEach(it=>{for(let k=0;k<EMB;k++)mean[k]+=it.emb[k]/n;});
+    const Xc=items.map(it=>{const r=new Float32Array(EMB);for(let k=0;k<EMB;k++)r[k]=it.emb[k]-mean[k];return r;});
+    const G=new Float32Array(n*n);
+    for(let i=0;i<n;i++)for(let j=i;j<n;j++){let s=0;const a=Xc[i],b=Xc[j];for(let k=0;k<EMB;k++)s+=a[k]*b[k];G[i*n+j]=s;G[j*n+i]=s;}
+    function power(Gm){
+      let v=new Float32Array(n).map(()=>1/Math.sqrt(n)),lam=0;
+      for(let it=0;it<80;it++){
+        const w=new Float32Array(n);
+        for(let i=0;i<n;i++){let s=0;for(let j=0;j<n;j++)s+=Gm[i*n+j]*v[j];w[i]=s;}
+        lam=Math.sqrt(w.reduce((a,x)=>a+x*x,0));
+        for(let i=0;i<n;i++)v[i]=w[i]/(lam||1);
+      }
+      return {v,lam};
+    }
+    const e1=power(G);
+    const G2=new Float32Array(G);
+    for(let i=0;i<n;i++)for(let j=0;j<n;j++)G2[i*n+j]-=e1.lam*e1.v[i]*e1.v[j];
+    const e2=power(G2);
+    const raw=items.map((it,i)=>[e1.v[i]*Math.sqrt(e1.lam),e2.v[i]*Math.sqrt(e2.lam)]);
+    fPC=[new Float32Array(EMB),new Float32Array(EMB)];
+    for(let i=0;i<n;i++){const a=Xc[i];const c1=e1.v[i]/Math.sqrt(e1.lam||1),c2=e2.v[i]/Math.sqrt(e2.lam||1);
+      for(let k=0;k<EMB;k++){fPC[0][k]+=a[k]*c1;fPC[1][k]+=a[k]*c2;}}
+    // normalise into world [0,1]
+    const xs=raw.map(c=>c[0]),ys=raw.map(c=>c[1]);
+    const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+    pca.norm=c=>[.08+.84*(c[0]-x0)/(x1-x0),.1+.8*(c[1]-y0)/(y1-y0)];
+    return raw.map(pca.norm);
+  }
+  function project(emb){
+    let x=0,y=0;for(let k=0;k<EMB;k++){const c=emb[k]-mean[k];x+=c*fPC[0][k];y+=c*fPC[1][k];}
+    return pca.norm([x,y]);
+  }
+  function size(){
+    const dpr=Math.min(2,devicePixelRatio||1);
+    field.width=wrap.clientWidth*dpr;field.height=wrap.clientHeight*dpr;
+  }
+  function w2s(wx,wy){
+    const W=field.width,H=field.height;
+    return [((wx-cam.x)*cam.z+.5)*W,((wy-cam.y)*cam.z+.5)*H];
+  }
+  function render(t){
+    const ctx=field.getContext('2d'),W=field.width,H=field.height;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#050807';ctx.fillRect(0,0,W,H);
+    // faint graticule
+    ctx.strokeStyle='rgba(83,241,182,.045)';ctx.lineWidth=1;
+    for(let i=0;i<=10;i++){
+      const [gx]=w2s(i/10,0),[,gy]=w2s(0,i/10);
+      ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();
+    }
+    if(!pts)return;
+    const thumbA=Math.max(0,Math.min(1,(cam.z-2.3)/0.9));
+    const drift=REDUCED?0:1;
+    pts.forEach((p,i)=>{
+      const wx=p.w[0]+drift*.004*Math.sin(t*.0004+i*1.7),wy=p.w[1]+drift*.004*Math.cos(t*.0005+i*2.3);
+      const [x,y]=w2s(wx,wy);
+      if(x<-40||x>W+40||y<-40||y>H+40)return;
+      p.s=[x,y];
+      if(thumbA>0.05){
+        const sz=34*Math.min(2,cam.z/3)* (field.width/1400+0.6);
+        ctx.globalAlpha=thumbA;
+        ctx.drawImage(p.it.img,x-sz/2,y-sz/2,sz,sz);
+        ctx.strokeStyle=p.it.cls==='dog'?'rgba(83,241,182,.8)':'rgba(167,139,250,.8)';
+        ctx.lineWidth=1.5;ctx.strokeRect(x-sz/2,y-sz/2,sz,sz);
+        ctx.globalAlpha=1;
+      }
+      if(thumbA<1){
+        ctx.globalAlpha=1-thumbA;
+        const g=p.it.cls==='dog'?glowD:glowC;
+        const r=(hoverI===i?30:16)+4*Math.sin(t*.001+i);
+        ctx.drawImage(g,x-r/2,y-r/2,r,r);
+        ctx.globalAlpha=1;
+      }
+    });
+    if(ex2.user){
+      const [x,y]=w2s(ex2.user.w[0],ex2.user.w[1]);
+      ex2.user.s=[x,y];
+      const pulse=REDUCED?36:30+10*Math.sin(t*.003);
+      ctx.drawImage(glowU,x-pulse/2,y-pulse/2,pulse,pulse);
+      ctx.strokeStyle='rgba(255,180,84,.9)';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(x,y,12+4*Math.sin(t*.003),0,7);ctx.stroke();
+      ctx.font='500 '+(12*(field.width/wrap.clientWidth))+'px "JetBrains Mono",monospace';
+      ctx.fillStyle='#FFB454';ctx.textAlign='center';
+      ctx.fillText('YOUR PHOTO',x,y-24);
+    }
+  }
+  function loop(t){
+    if(!visible){raf=null;return;}
+    cam.x+=(tgt.x-cam.x)*.08;cam.y+=(tgt.y-cam.y)*.08;cam.z+=(tgt.z-cam.z)*.08;
+    zoomEl.textContent=cam.z.toFixed(1)+'×';
+    render(t);
+    raf=requestAnimationFrame(loop);
+  }
+  const vio=new IntersectionObserver(es=>{
+    visible=es.some(e=>e.isIntersecting);
+    if(visible&&!raf&&pts)raf=requestAnimationFrame(loop);
+  });
+  vio.observe(wrap);
+
+  /* input: pan / zoom / hover */
+  let drag=null;
+  field.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,cx:tgt.x,cy:tgt.y};field.classList.add('grabbing');field.setPointerCapture(e.pointerId);});
+  field.addEventListener('pointermove',e=>{
+    if(drag){
+      const dpr=field.width/wrap.clientWidth;
+      tgt.x=drag.cx-(e.clientX-drag.x)*dpr/(field.width*tgt.z);
+      tgt.y=drag.cy-(e.clientY-drag.y)*dpr/(field.width*tgt.z);
+      return;
+    }
+    if(!pts)return;
+    const r=field.getBoundingClientRect();
+    const mx=(e.clientX-r.left)*field.width/r.width,my=(e.clientY-r.top)*field.height/r.height;
+    let best=-1,bd=26*26*(field.width/wrap.clientWidth);
+    pts.forEach((p,i)=>{if(!p.s)return;const dx=p.s[0]-mx,dy=p.s[1]-my,d=dx*dx+dy*dy;if(d<bd){bd=d;best=i;}});
+    hoverI=best;
+    if(best>=0){
+      peekImg.src='lab-data/'+pts[best].it.file;
+      peekLbl.textContent='SPEC '+String(best+1).padStart(3,'0')+' · '+pts[best].it.cls;
+      peek.style.display='block';
+      peek.style.left=Math.min(r.width-124,(e.clientX-r.left)+16)+'px';
+      peek.style.top=Math.max(6,(e.clientY-r.top)-130)+'px';
+    }else peek.style.display='none';
+  });
+  field.addEventListener('pointerup',e=>{drag=null;field.classList.remove('grabbing');});
+  field.addEventListener('pointerleave',()=>{hoverI=-1;peek.style.display='none';});
+  field.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const r=field.getBoundingClientRect();
+    const sx=(e.clientX-r.left)/r.width-.5, sy=(e.clientY-r.top)/r.height-.5;
+    const oz=tgt.z;
+    tgt.z=Math.max(.7,Math.min(6,tgt.z*Math.exp(-e.deltaY*.0016)));
+    // keep world point under cursor fixed
+    const wx=tgt.x+sx/oz, wy=tgt.y+sy/oz;
+    tgt.x=wx-sx/tgt.z; tgt.y=wy-sy/tgt.z;
+  },{passive:false});
+
+  async function setup(){
+    size();addEventListener('resize',()=>{size();});
+    prog.textContent='surveying the space…';
+    await dataset(m=>prog.textContent=m);
+    const coords=pca(_data.items);
+    pts=_data.items.map((it,i)=>({it,w:coords[i],s:null}));
+    ex2.pts=pts;
+    countEl.textContent=pts.length;
+    prog.innerHTML='<span class="mvoice" style="font-size:12px">240 photographs, reduced from 1,280 dimensions to the two you can see. dive below 2.3× and the points become the photographs themselves.</span>';
+    llog('E2: atlas built · 240 points');
+    if(visible&&!raf)raf=requestAnimationFrame(loop);
+  }
+  up.addEventListener('change',e=>{const f=e.target.files[0];if(!f||!pts)return;
+    const u=URL.createObjectURL(f);const img=new Image();
+    img.onload=()=>runExclusive(async()=>{
+      const cv=document.createElement('canvas');cv.width=IMG;cv.height=IMG;
+      coverDraw(cv.getContext('2d'),img,IMG);
+      prog.textContent='placing your photograph…';
+      const emb=await embedCanvas(cv);
+      const w=project(emb);
+      ex2.user={w,s:null};ex2.placed=true;
+      tgt.x=w[0];tgt.y=w[1];tgt.z=3.1;   // camera dives to your point
+      const nb=pts.map(p=>({p,d:(p.w[0]-w[0])**2+(p.w[1]-w[1])**2})).sort((a,b)=>a.d-b.d).slice(0,5);
+      const dogs=nb.filter(x=>x.p.it.cls==='dog').length;
+      prog.innerHTML='<span class="mvoice" style="font-size:12px">placed. nearest neighbours: '+dogs+' dogs, '+(5-dogs)+' cats. that neighbourhood is my whole opinion of your photo.</span>';
+      llog('E2: user photo placed · '+dogs+'/5 dog neighbours');
+      URL.revokeObjectURL(u);reportDraw();
+    });
+    img.src=u;
+  });
+  onEnter('#ex2',()=>runExclusive(setup));
+})();
+
+/* ================= specimen intake ================= */
+const specimen=document.createElement('canvas');specimen.width=IMG;specimen.height=IMG;
+const sctx=specimen.getContext('2d',{willReadFrequently:true});
+const spListeners=[];let specCount=1;
+function onSpecimen(fn){spListeners.push(fn);}
+function emitSpecimen(){spListeners.forEach(f=>{try{f();}catch(e){console.error(e);}});}
+(function(){
+  const thumb=document.getElementById('sp-thumb'),verdictEl=document.getElementById('sp-verdict');
+  const tagEl=document.getElementById('sp-tag'),probeEl=document.getElementById('sp-probe');
+  async function verdict(){
+    verdictEl.innerHTML='Thinking<span class="loading"></span>';
+    hud('MDL> …');
+    try{const p=await parts();const o=p.tf.tidy(()=>p.clf.apply(canvasTensor(p.tf,specimen)));const s=(await o.data())[0];o.dispose();
+      const dog=s>=.5,c=dog?s:1-s;
+      verdictEl.innerHTML='Verdict: <em>'+(dog?'dog':'cat')+'</em> · <span class="pct">'+(c*100).toFixed(1)+'%</span>';
+      hud('MDL> '+(dog?'DOG':'CAT')+' <b>'+(c*100).toFixed(1)+'%</b>');
+      llog('intake: SPEC-'+String(specCount).padStart(3,'0')+' → '+(dog?'dog':'cat')+' '+(c*100).toFixed(1)+'%');
+    }catch(e){console.error(e);verdictEl.textContent='Could not run the model.';}
+  }
+  onSpecimen(()=>runExclusive(verdict));
+  thumb.addEventListener('mousemove',e=>{
+    const r=thumb.getBoundingClientRect();
+    const px=Math.max(0,Math.min(IMG-1,Math.floor((e.clientX-r.left)/r.width*IMG)));
+    const py=Math.max(0,Math.min(IMG-1,Math.floor((e.clientY-r.top)/r.height*IMG)));
+    const d=sctx.getImageData(px,py,1,1).data;
+    probeEl.innerHTML='px['+px+','+py+'] rgb <b>'+d[0]+' '+d[1]+' '+d[2]+'</b>';
+  });
+  function markChip(btn){document.querySelectorAll('.specimen .chip').forEach(c=>c.classList.remove('chip--active'));if(btn)btn.classList.add('chip--active');}
+  function register(img,btn,src){
+    thumb.src=src;markChip(btn);
+    sctx.clearRect(0,0,IMG,IMG);coverDraw(sctx,img,IMG);
+    specCount++;tagEl.textContent='SPEC-'+String(specCount).padStart(3,'0');
+    emitSpecimen();
+  }
+  document.querySelectorAll('[data-sample]').forEach(b=>b.addEventListener('click',async()=>{
+    const img=await loadImage('samples/'+b.dataset.sample+'.jpg');register(img,b,img.src);
+  }));
+  document.getElementById('sp-upload').addEventListener('change',e=>{
+    const f=e.target.files[0];if(!f)return;const u=URL.createObjectURL(f);const img=new Image();
+    img.onload=()=>register(img,document.getElementById('sp-upload').closest('.chip'),u);
+    img.src=u;
+  });
+  (async()=>{const img=await loadImage('samples/dog.jpg');thumb.src=img.src;sctx.clearRect(0,0,IMG,IMG);coverDraw(sctx,img,IMG);emitSpecimen();})();
+})();
+
+/* ================= EXPERIMENT 3 : Grad-CAM ================= */
+const ex3={ran:false};
+(function(){
+  const src=document.getElementById('cam-src'),out=document.getElementById('cam-out');
+  const vEl=document.getElementById('cam-verdict'),xEl=document.getElementById('cam-explain');
+  let seen=false;
+  async function run(){
+    src.getContext('2d').drawImage(specimen,0,0);
+    try{
+      const p=await parts(),tf=p.tf;
+      const conv=tf.tidy(()=>p.backbone.apply(canvasTensor(tf,specimen)));
+      const s=(await tf.tidy(()=>p.head.apply(conv)).data())[0];
+      const dog=s>=.5;
+      const g=tf.grad(c=>{const sc=p.head.apply(c).sum();return dog?sc:sc.mul(-1);});
+      const grads=g(conv);
+      const cam=tf.tidy(()=>{
+        const w=grads.mean([1,2]);
+        const m=conv.mul(w.reshape([1,1,1,EMB])).sum(3).relu().squeeze();
+        const mn=m.min(),mx=m.max();
+        return m.sub(mn).div(mx.sub(mn).add(1e-6));
+      });
+      const d=await cam.data(),[h,w]=cam.shape;
+      tf.dispose([conv,grads,cam]);
+      const heat=document.createElement('canvas');heat.width=w;heat.height=h;
+      const hx=heat.getContext('2d');const im=hx.createImageData(w,h);
+      for(let i=0;i<w*h;i++){const v=d[i];im.data[i*4]=Math.round(120+135*v);im.data[i*4+1]=Math.round(230*v);im.data[i*4+2]=Math.round(90*v);im.data[i*4+3]=Math.round(215*Math.pow(v,1.4));}
+      hx.putImageData(im,0,0);
+      const ox=out.getContext('2d');
+      ox.imageSmoothingEnabled=true;ox.clearRect(0,0,300,300);
+      ox.filter='saturate(.5) brightness(.5)';ox.drawImage(specimen,0,0,300,300);ox.filter='none';
+      ox.globalCompositeOperation='screen';
+      ox.drawImage(heat,0,0,300,300);
+      ox.globalCompositeOperation='source-over';
+      const c=dog?s:1-s;
+      vEl.innerHTML='<span class="pct">'+(c*100).toFixed(1)+'%</span> '+(dog?'dog':'cat');
+      xEl.innerHTML='Computed by asking each of the machine&rsquo;s 2.3 million knobs: <em>&ldquo;if this region changed, how much would the answer change?&rdquo;</em> Swap the specimen above and watch it re-aim instantly.';
+      llog('E3: attribution map computed');
+      ex3.ran=true;reportDraw();
+    }catch(e){console.error('cam',e);xEl.textContent='Could not compute the heatmap on this device.';}
+  }
+  onEnter('#ex3',()=>{seen=true;runExclusive(run);});
+  onSpecimen(()=>{if(seen)runExclusive(run);});
+})();
+
+/* ================= EXPERIMENT 4 : adversarial ================= */
+const ex4={flipped:false,steps:0};
+(function(){
+  const out=document.getElementById('adv-out'),diff=document.getElementById('adv-diff'),cap=document.getElementById('adv-out-cap');
+  const vEl=document.getElementById('adv-verdict'),fEl=document.getElementById('adv-fill'),xEl=document.getElementById('adv-explain'),prog=document.getElementById('adv-prog'),go=document.getElementById('adv-go');
+  let seen=false;
+  function show(){out.getContext('2d').drawImage(specimen,0,0);diff.getContext('2d').clearRect(0,0,IMG,IMG);cap.textContent='the photo';}
+  async function baseline(){
+    show();
+    const p=await parts();
+    const s=(await p.tf.tidy(()=>p.clf.apply(canvasTensor(p.tf,specimen))).data())[0];
+    const dog=s>=.5,c=dog?s:1-s;
+    vEl.innerHTML='Before: <em>'+(dog?'dog':'cat')+'</em> at <span class="pct">'+(c*100).toFixed(1)+'%</span>';
+    fEl.style.width=(c*100)+'%';fEl.classList.remove('amber');
+    go.disabled=false;prog.textContent='';
+    return {s,dog};
+  }
+  go.addEventListener('click',()=>runExclusive(async()=>{
+    go.disabled=true;llog('E4: attack launched');
+    try{
+      const p=await parts(),tf=p.tf;
+      const base=canvasTensor(tf,specimen);
+      const s0=(await tf.tidy(()=>p.clf.apply(base)).data())[0];
+      const dog0=s0>=.5;
+      const lossGrad=tf.grad(x=>p.clf.apply(x).sum());
+      let x=base.clone();
+      const EPS=.9/255, STEPS=14;
+      let flipped=false,steps=STEPS,sNow=s0;
+      for(let i=0;i<STEPS;i++){
+        const g=lossGrad(x);
+        const nx=tf.tidy(()=>x.add(g.sign().mul(dog0?-EPS:EPS)).clipByValue(0,1));
+        tf.dispose([g,x]);x=nx;
+        sNow=(await tf.tidy(()=>p.clf.apply(x)).data())[0];
+        const dogN=sNow>=.5,cN=dogN?sNow:1-sNow;
+        prog.textContent='whisper '+(i+1)+'/'+STEPS+' · now '+(cN*100).toFixed(1)+'% '+(dogN?'dog':'cat');
+        vEl.innerHTML='Now: <em>'+(dogN?'dog':'cat')+'</em> at <span class="pct">'+(cN*100).toFixed(1)+'%</span>';
+        fEl.style.width=(cN*100)+'%';fEl.classList.toggle('amber',dogN!==dog0);
+        await tf.browser.toPixels(x.squeeze(),out);
+        const dv=tf.tidy(()=>x.sub(base).mul(20).add(.5).clipByValue(0,1).squeeze());
+        await tf.browser.toPixels(dv,diff);dv.dispose();
+        await tf.nextFrame();
+        if((sNow>=.5)!==dog0&&(dogN?sNow:1-sNow)>.85){flipped=true;steps=i+1;break;}
+        if((sNow>=.5)!==dog0){flipped=true;steps=i+1;}
+      }
+      const dogN=sNow>=.5,cN=dogN?sNow:1-sNow;
+      cap.textContent='the photo (attacked)';
+      ex4.flipped=flipped;ex4.steps=steps;
+      const c0=dog0?s0:1-s0;
+      xEl.innerHTML=flipped
+        ?'It flipped: <strong>'+(c0*100).toFixed(1)+'% '+(dog0?'dog':'cat')+'</strong> &rarr; <strong>'+(cN*100).toFixed(1)+'% '+(dogN?'dog':'cat')+'</strong>. Each pixel moved by at most one shade in 255 per whisper — the noise panel is amplified 20&times; just so you can see anything at all.'
+        :'This photograph resisted '+STEPS+' whispers — it sits deep inside its region of the space. Try the other sample, or attack again.';
+      llog('E4: '+(flipped?('verdict flipped in '+steps+' steps'):'photo resisted'));
+      prog.textContent='';reportDraw();
+    }catch(e){console.error('adv',e);prog.textContent='Attack failed to run on this device.';}
+    go.disabled=false;
+  }));
+  onEnter('#ex4',()=>{seen=true;runExclusive(baseline);});
+  onSpecimen(()=>{if(seen)runExclusive(baseline);});
+})();
+
+/* ================= EXPERIMENT 5 : blur duel ================= */
+const ex5={you:0,bot:0,played:false};
+(function(){
+  const cv=document.getElementById('g-canvas');
+  const youEl=document.getElementById('g-you'),botEl=document.getElementById('g-bot'),roundEl=document.getElementById('g-round');
+  const msg=document.getElementById('g-msg'),lvl=document.getElementById('g-level');
+  const bStart=document.getElementById('g-start'),bDog=document.getElementById('g-dog'),bCat=document.getElementById('g-cat'),bMore=document.getElementById('g-more');
+  const LEVELS=[5,9,16,30,150], PTS=[5,4,3,2,1];
+  let order=[],round=0,level=0,botGuess=[],cur=null,busy=false;
+
+  function blurTo(target,img,px){
+    const t=document.createElement('canvas');t.width=px;t.height=px;
+    const tx=t.getContext('2d');tx.imageSmoothingEnabled=true;
+    coverDraw(tx,img,px);
+    const ox=target.getContext('2d');
+    ox.imageSmoothingEnabled=px>=150;
+    ox.clearRect(0,0,target.width,target.height);
+    ox.drawImage(t,0,0,target.width,target.height);
+    return t;
+  }
+  async function machineGuessAt(img,px){
+    const p=await parts();
+    const small=document.createElement('canvas');small.width=px;small.height=px;
+    coverDraw(small.getContext('2d'),img,px);
+    const big=document.createElement('canvas');big.width=IMG;big.height=IMG;
+    const bx=big.getContext('2d');bx.imageSmoothingEnabled=false;
+    bx.drawImage(small,0,0,IMG,IMG);
+    const s=(await p.tf.tidy(()=>p.clf.apply(canvasTensor(p.tf,big))).data())[0];
+    return s>=.5?'dog':'cat';
+  }
+  function setButtons(inRound){bDog.hidden=bCat.hidden=!inRound;bMore.hidden=!inRound||level>=LEVELS.length-1;bStart.hidden=inRound;}
+  async function startRound(){
+    cur=order[round];level=0;botGuess=[];
+    roundEl.textContent=(round+1)+'/5';
+    msg.textContent='The machine is studying the blur…';
+    setButtons(true);bDog.disabled=bCat.disabled=bMore.disabled=true;
+    blurTo(cv,cur.img,LEVELS[0]);
+    lvl.textContent='blur 1/5 · worth '+PTS[0]+' pts';
+    for(let i=0;i<LEVELS.length;i++)botGuess.push(await machineGuessAt(cur.img,LEVELS[i]));
+    msg.textContent='The machine has locked a guess at every level. Answer now for '+PTS[0]+' points, or sharpen.';
+    bDog.disabled=bCat.disabled=bMore.disabled=false;
+  }
+  async function answer(guess){
+    if(busy)return;busy=true;
+    bDog.disabled=bCat.disabled=bMore.disabled=true;
+    const pts=PTS[level];
+    const youOk=guess===cur.cls, botOk=botGuess[level]===cur.cls;
+    if(youOk)ex5.you+=pts; if(botOk)ex5.bot+=pts;
+    youEl.textContent=ex5.you;botEl.textContent=ex5.bot;
+    blurTo(cv,cur.img,150);
+    msg.innerHTML='It was a <strong>'+cur.cls+'</strong>. You said '+guess+' ('+(youOk?'✅ +'+pts:'❌ 0')+'). At that blur the machine said '+botGuess[level]+' ('+(botOk?'✅ +'+pts:'❌ 0')+').';
+    llog('E5: round '+(round+1)+' · you '+(youOk?'+'+pts:'0')+' · mdl '+(botOk?'+'+pts:'0'));
+    round++;
+    await new Promise(r=>setTimeout(r,2600));
+    if(round<5){await startRound();}
+    else{
+      setButtons(false);bStart.textContent='↻ rematch';
+      ex5.played=true;
+      msg.innerHTML=ex5.you>ex5.bot?'<strong>You win '+ex5.you+'–'+ex5.bot+'.</strong> Human vision holds the crown — you read structure, it reads texture statistics.'
+        :ex5.you<ex5.bot?'<strong>The machine wins '+ex5.bot+'–'+ex5.you+'.</strong> Texture statistics survive blur surprisingly well — often better than human structure-reading.'
+        :'<strong>A draw, '+ex5.you+'–'+ex5.bot+'.</strong> Two very different senses, evenly matched today.';
+      lvl.textContent='';llog('E5: final '+ex5.you+'–'+ex5.bot);reportDraw();
+    }
+    busy=false;
+  }
+  bMore.addEventListener('click',()=>{
+    if(level>=LEVELS.length-1)return;
+    level++;blurTo(cv,cur.img,LEVELS[level]);
+    lvl.textContent='blur '+(level+1)+'/5 · worth '+PTS[level]+' pts';
+    bMore.hidden=level>=LEVELS.length-1;
+    msg.textContent='Sharper. Now worth '+PTS[level]+' point'+(PTS[level]>1?'s':'')+'.';
+  });
+  bDog.addEventListener('click',()=>answer('dog'));
+  bCat.addEventListener('click',()=>answer('cat'));
+  bStart.addEventListener('click',()=>runExclusive(async()=>{
+    bStart.disabled=true;msg.textContent='Loading photographs…';
+    await dataset(m=>msg.textContent=m);
+    ex5.you=0;ex5.bot=0;youEl.textContent='0';botEl.textContent='0';round=0;
+    order=[..._data.strip].sort(()=>Math.random()-.5).slice(0,5);
+    bStart.disabled=false;
+    llog('E5: duel started');
+    await startRound();
+  }));
+})();
+
+/* ================= EXPERIMENT 6 : webcam ================= */
+const ex6={trained:false,names:null};
+(function(){
+  const video=document.getElementById('wc-video'),enable=document.getElementById('wc-enable');
+  const nameA=document.getElementById('wc-name-a'),nameB=document.getElementById('wc-name-b');
+  const shotA=document.getElementById('wc-shot-a'),shotB=document.getElementById('wc-shot-b');
+  const shotsA=document.getElementById('wc-shots-a'),shotsB=document.getElementById('wc-shots-b');
+  const trainBtn=document.getElementById('wc-train'),prog=document.getElementById('wc-prog');
+  const vEl=document.getElementById('wc-verdict'),fEl=document.getElementById('wc-fill');
+  const A=[],B=[]; let head=null,liveTimer=null;
+
+  enable.addEventListener('click',async()=>{
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({video:{width:480,height:480,facingMode:'environment'}});
+      video.srcObject=stream;enable.textContent='🎥 camera live';enable.disabled=true;
+      shotA.disabled=shotB.disabled=false;
+      llog('E6: camera enabled');
+    }catch(e){console.error(e);enable.textContent='camera blocked — check permissions';}
+  });
+  function grab(){
+    const cv=document.createElement('canvas');cv.width=IMG;cv.height=IMG;
+    const s=Math.min(video.videoWidth,video.videoHeight);
+    cv.getContext('2d').drawImage(video,(video.videoWidth-s)/2,(video.videoHeight-s)/2,s,s,0,0,IMG,IMG);
+    return cv;
+  }
+  function checkReady(){
+    const ok=A.length>=4&&B.length>=4;
+    trainBtn.disabled=!ok;
+    prog.textContent=ok?'Ready to train.':'Need at least 4 shots of each ('+A.length+' / '+B.length+' so far). Vary the angle!';
+  }
+  async function capture(list,box){
+    const cv=grab();
+    const im=document.createElement('img');im.src=cv.toDataURL('image/jpeg',.7);box.appendChild(im);
+    prog.textContent='describing the shot…';
+    list.push(await embedCanvas(cv));
+    checkReady();
+  }
+  shotA.addEventListener('click',()=>runExclusive(()=>capture(A,shotsA)));
+  shotB.addEventListener('click',()=>runExclusive(()=>capture(B,shotsB)));
+  trainBtn.addEventListener('click',()=>runExclusive(async()=>{
+    trainBtn.disabled=true;prog.textContent='training…';
+    if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
+    const tf=await tfReady();
+    head?.dispose?.();
+    head=await freshHead(16,2);
+    const xs=tf.tensor2d([...A,...B].map(e=>Array.from(e)));
+    const ys=tf.tensor2d([...A.map(()=>[1,0]),...B.map(()=>[0,1])]);
+    await head.fit(xs,ys,{epochs:40,batchSize:8,shuffle:true});
+    tf.dispose([xs,ys]);
+    ex6.trained=true;ex6.names=[nameA.value||'Thing A',nameB.value||'Thing B'];
+    prog.textContent='Trained on '+(A.length+B.length)+' shots. Point the camera — it\'s guessing live.';
+    trainBtn.disabled=false;trainBtn.textContent='↻ re-train';
+    llog('E6: trained · '+ex6.names.join(' vs '));
+    liveTimer=setInterval(()=>runExclusive(async()=>{
+      if(!video.videoWidth||!head)return;
+      const emb=await embedCanvas(grab());
+      const t=(await parts()).tf;
+      const o=t.tidy(()=>head.predict(t.tensor2d([Array.from(emb)])));
+      const d=await o.data();o.dispose();
+      const a=d[0]>=d[1],c=a?d[0]:d[1];
+      vEl.innerHTML='I see <em>'+(a?ex6.names[0]:ex6.names[1])+'</em> · <span class="pct">'+(c*100).toFixed(0)+'%</span>';
+      fEl.style.width=(c*100)+'%';
+    }),450);
+    reportDraw();
+  }));
+  addEventListener('pagehide',()=>{if(liveTimer)clearInterval(liveTimer);});
+})();
+
+/* ================= EXPERIMENT 7 : the third word ================= */
+const ex7={fixed:false};
+(function(){
+  const trainBtn=document.getElementById('fx-train'),prog=document.getElementById('fx-prog');
+  const thumbCv=document.getElementById('fx-thumb'),tctx=thumbCv.getContext('2d',{willReadFrequently:true});
+  const oldEl=document.getElementById('fx-old'),newEl=document.getElementById('fx-new');
+  const chips=document.querySelectorAll('[data-fx]'),up=document.getElementById('fx-upload');
+  let head3=null;
+
+  function genGarbage(kind,animals){
+    const cv=document.createElement('canvas');cv.width=IMG;cv.height=IMG;const x=cv.getContext('2d');
+    if(kind===0){const im=x.createImageData(IMG,IMG);for(let i=0;i<im.data.length;i+=4){im.data[i]=Math.random()*255;im.data[i+1]=Math.random()*255;im.data[i+2]=Math.random()*255;im.data[i+3]=255;}x.putImageData(im,0,0);}
+    else if(kind===1){x.fillStyle='hsl('+Math.floor(Math.random()*360)+','+Math.floor(30+Math.random()*70)+'%,'+Math.floor(20+Math.random()*60)+'%)';x.fillRect(0,0,IMG,IMG);}
+    else if(kind===2){const g=x.createLinearGradient(0,0,IMG,IMG);g.addColorStop(0,'hsl('+Math.floor(Math.random()*360)+',70%,50%)');g.addColorStop(1,'hsl('+Math.floor(Math.random()*360)+',70%,30%)');x.fillStyle=g;x.fillRect(0,0,IMG,IMG);}
+    else if(kind===3){
+      const src=animals[Math.floor(Math.random()*animals.length)].img;
+      const T=5,S=IMG/T,idx=[...Array(T*T).keys()].sort(()=>Math.random()-.5);
+      const tmp=document.createElement('canvas');tmp.width=IMG;tmp.height=IMG;coverDraw(tmp.getContext('2d'),src,IMG);
+      idx.forEach((from,to)=>{x.drawImage(tmp,(from%T)*S,Math.floor(from/T)*S,S,S,(to%T)*S,Math.floor(to/T)*S,S,S);});
+    }
+    else{const s=6+Math.floor(Math.random()*18);for(let yy=0;yy<IMG;yy+=s)for(let xx=0;xx<IMG;xx+=s){x.fillStyle=((xx/s+yy/s)%2)?'#111':'hsl('+Math.floor(Math.random()*360)+',80%,55%)';x.fillRect(xx,yy,s,s);}}
+    return cv;
+  }
+  async function setup(){await dataset(m=>prog.textContent=m);prog.textContent='Ready to build the correction.';trainBtn.disabled=false;}
+  trainBtn.addEventListener('click',()=>runExclusive(async()=>{
+    trainBtn.disabled=true;llog('E7: generating garbage class');
+    const p=await parts(),tf=p.tf;
+    const garbage=[];
+    for(let i=0;i<80;i++){
+      const kind=i%5;
+      garbage.push(await embedCanvas(genGarbage(kind,_data.train)));
+      if(i%10===0){prog.textContent='generating garbage… '+i+'/80';await tf.nextFrame();}
+    }
+    prog.textContent='training the three-word machine…';
+    head3?.dispose?.();
+    head3=await freshHead(32,3);
+    const xs=tf.tensor2d([
+      ..._data.train.filter(i=>i.cls==='dog').map(i=>Array.from(i.emb)),
+      ..._data.train.filter(i=>i.cls==='cat').map(i=>Array.from(i.emb)),
+      ...garbage.map(e=>Array.from(e))
+    ]);
+    const ys=tf.tensor2d([
+      ..._data.train.filter(i=>i.cls==='dog').map(()=>[1,0,0]),
+      ..._data.train.filter(i=>i.cls==='cat').map(()=>[0,1,0]),
+      ...garbage.map(()=>[0,0,1])
+    ]);
+    await head3.fit(xs,ys,{epochs:20,batchSize:32,shuffle:true});
+    tf.dispose([xs,ys]);
+    ex7.fixed=true;
+    prog.textContent='Done. Your machine has three words now: dog, cat, neither. Try to fool it.';
+    llog('E7: third word shipped');
+    chips.forEach(c=>c.disabled=false);up.disabled=false;
+    trainBtn.textContent='↻ re-train the correction';trainBtn.disabled=false;
+    reportDraw();
+  }));
+  async function duel(){
+    oldEl.innerHTML=newEl.innerHTML='<span class="loading">thinking</span>';
+    const p=await parts(),tf=p.tf;
+    const s=(await tf.tidy(()=>p.clf.apply(canvasTensor(tf,thumbCv))).data())[0];
+    const dog=s>=.5,c=dog?s:1-s;
+    oldEl.innerHTML='<span class="pct">'+(c*100).toFixed(1)+'%</span> sure it&rsquo;s a <strong>'+(dog?'dog':'cat')+'</strong>';
+    const emb=await embedCanvas(thumbCv);
+    const o=tf.tidy(()=>head3.predict(tf.tensor2d([Array.from(emb)])));
+    const d=await o.data();o.dispose();
+    const k=d.indexOf(Math.max(...d));
+    newEl.innerHTML=k===2
+      ?'<span class="idk">&ldquo;Neither. I don&rsquo;t know what this is.&rdquo;</span> <span class="pct">('+(d[2]*100).toFixed(1)+'%)</span>'
+      :'<span class="pct">'+(d[k]*100).toFixed(1)+'%</span> sure it&rsquo;s a <strong>'+(k===0?'dog':'cat')+'</strong>';
+    llog('E7: duel · old='+(dog?'dog':'cat')+' new='+(k===2?'neither':(k===0?'dog':'cat')));
+  }
+  chips.forEach(ch=>ch.addEventListener('click',()=>runExclusive(async()=>{
+    const kind=ch.dataset.fx;
+    if(kind==='noise')tctx.drawImage(genGarbage(0,_data.train),0,0);
+    else if(kind==='solid'){tctx.fillStyle='#3B82F6';tctx.fillRect(0,0,IMG,IMG);}
+    else if(kind==='scramble')tctx.drawImage(genGarbage(3,_data.train),0,0);
+    else if(kind==='dog'){const dogs=_data.strip.filter(i=>i.cls==='dog');coverDraw(tctx,dogs[Math.floor(Math.random()*dogs.length)].img,IMG);}
+    await duel();
+  })));
+  up.addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const u=URL.createObjectURL(f);const img=new Image();
+    img.onload=()=>runExclusive(async()=>{tctx.clearRect(0,0,IMG,IMG);coverDraw(tctx,img,IMG);await duel();URL.revokeObjectURL(u);});img.src=u;});
+  onEnter('#ex7',()=>runExclusive(setup));
+})();
+
+/* ================= field report poster ================= */
+let repSerial=null;
+function reportDraw(){
+  const cv=document.getElementById('report'),ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  if(!repSerial)repSerial='LR-'+String(Date.now()%100000).padStart(5,'0');
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#070909';ctx.fillRect(0,0,W,H);
+  // frame + perforation ticks
+  ctx.strokeStyle='#243029';ctx.lineWidth=2;ctx.strokeRect(46,46,W-92,H-92);
+  ctx.strokeStyle='#1b2320';
+  for(let x=46;x<W-46;x+=26){ctx.beginPath();ctx.moveTo(x,38);ctx.lineTo(x+12,38);ctx.stroke();ctx.beginPath();ctx.moveTo(x,H-38);ctx.lineTo(x+12,H-38);ctx.stroke();}
+  // header
+  ctx.fillStyle='#FFB454';ctx.font='500 21px "JetBrains Mono",monospace';ctx.textAlign='left';
+  ctx.fillText('SPECIMEN LABORATORY · FIELD REPORT · NO. '+repSerial,86,116);
+  ctx.fillStyle='#E9E6DC';ctx.font='400 76px Fraunces,Georgia,serif';
+  ctx.fillText('I raised a neural',86,216);
+  ctx.font='italic 400 76px Fraunces,Georgia,serif';ctx.fillStyle='#53F1B6';
+  ctx.fillText('network.',86,300);
+  // specimen + heatmap
+  try{
+    ctx.drawImage(specimen,86,352,240,240);
+    if(ex3.ran)ctx.drawImage(document.getElementById('cam-out'),346,352,240,240);
+    else{
+      ctx.fillStyle='#0a0d0c';ctx.fillRect(346,352,240,240);
+      ctx.fillStyle='#4d5651';ctx.font='400 14px "JetBrains Mono",monospace';ctx.textAlign='center';
+      ctx.fillText('— pending E3 —',466,476);ctx.textAlign='left';
+    }
+    ctx.strokeStyle='#243029';ctx.lineWidth=1.5;
+    ctx.strokeRect(86,352,240,240);ctx.strokeRect(346,352,240,240);
+    ctx.fillStyle='#87918B';ctx.font='400 15px "JetBrains Mono",monospace';
+    ctx.fillText('THE SPECIMEN',86,620);ctx.fillText('ITS EVIDENCE',346,620);
+  }catch(e){}
+  // mini atlas
+  if(ex2.pts){
+    const ax=640,ay=352,aw=354,ah=240;
+    ctx.fillStyle='#050807';ctx.fillRect(ax,ay,aw,ah);
+    ctx.strokeStyle='#243029';ctx.strokeRect(ax,ay,aw,ah);
+    ex2.pts.forEach(p=>{
+      ctx.fillStyle=p.it.cls==='dog'?'rgba(83,241,182,.75)':'rgba(167,139,250,.75)';
+      ctx.beginPath();ctx.arc(ax+p.w[0]*aw,ay+p.w[1]*ah,2.4,0,7);ctx.fill();
+    });
+    if(ex2.user){
+      ctx.fillStyle='#FFB454';
+      ctx.beginPath();ctx.arc(ax+ex2.user.w[0]*aw,ay+ex2.user.w[1]*ah,6,0,7);ctx.fill();
+      ctx.strokeStyle='#FFB454';ctx.beginPath();ctx.arc(ax+ex2.user.w[0]*aw,ay+ex2.user.w[1]*ah,11,0,7);ctx.stroke();
+    }
+    ctx.fillStyle='#87918B';ctx.font='400 15px "JetBrains Mono",monospace';
+    ctx.fillText('ITS MIND, MAPPED',ax,620);
+  }
+  // results table
+  const lines=[
+    ['E1  trained a classifier live',ex1.history?('best held-out '+(ex1.bestVal*100).toFixed(1)+'% · exam '+ex1.exam+'/40'):'— pending'],
+    ['E2  mapped its thought-space',ex2.placed?'placed my own photo in the atlas':(ex2.pts?'walked 240 photos as geometry':'— pending')],
+    ['E3  traced a decision backwards',ex3.ran?'gradient attribution, exact':'— pending'],
+    ['E4  forged an invisible disguise',ex4.flipped?('verdict flipped in '+ex4.steps+' whispers'):'— pending'],
+    ['E5  raced it on raw perception',ex5.played?('me '+ex5.you+' — '+ex5.bot+' machine'):'— pending'],
+    ['E6  taught it my own objects',ex6.trained?(ex6.names[0]+' vs '+ex6.names[1]):'— pending'],
+    ['E7  taught it "I don\'t know"',ex7.fixed?'shipped the third word: neither':'— pending'],
+  ];
+  let y=706;
+  ctx.font='400 23px "JetBrains Mono",monospace';
+  lines.forEach(l=>{
+    ctx.fillStyle='#E9E6DC';ctx.textAlign='left';ctx.fillText(l[0],86,y);
+    ctx.fillStyle=l[1].startsWith('—')?'#4d5651':'#53F1B6';
+    ctx.textAlign='right';ctx.fillText(l[1],W-86,y);ctx.textAlign='left';
+    ctx.strokeStyle='rgba(36,48,41,.6)';ctx.beginPath();ctx.moveTo(86,y+22);ctx.lineTo(W-86,y+22);ctx.stroke();
+    y+=64;
+  });
+  // stamp
+  ctx.save();
+  ctx.translate(W-250,H-210);ctx.rotate(-.1);
+  ctx.strokeStyle='rgba(255,180,84,.85)';ctx.lineWidth=3;
+  ctx.strokeRect(-120,-46,240,92);
+  ctx.fillStyle='rgba(255,180,84,.9)';ctx.font='700 24px "JetBrains Mono",monospace';ctx.textAlign='center';
+  ctx.fillText('VERIFIED · REAL MODEL',0,-6);
+  ctx.font='500 16px "JetBrains Mono",monospace';
+  ctx.fillText('RAN ENTIRELY IN BROWSER',0,24);
+  ctx.restore();
+  // footer (short lines — keep clear of the stamp at bottom right)
+  ctx.textAlign='left';
+  ctx.fillStyle='#87918B';ctx.font='400 19px Inter,sans-serif';
+  ctx.fillText('MobileNetV2 · 2.3M parameters —',86,H-196);
+  ctx.fillText('trained, mapped, fooled and corrected by me.',86,H-166);
+  ctx.fillStyle='#53F1B6';ctx.font='500 20px "JetBrains Mono",monospace';
+  ctx.fillText('navsha.github.io/dogs-vs-cats/lab.html',86,H-118);
+}
+document.getElementById('rep-dl').addEventListener('click',()=>{
+  reportDraw();
+  const a=document.createElement('a');a.download='field-report.png';a.href=document.getElementById('report').toDataURL('image/png');a.click();
+  llog('field report downloaded');
+});
+onEnter('.outro',reportDraw);
+document.fonts&&document.fonts.ready.then(reportDraw);
+reportDraw();
+})();
+</script>
+</body>
+</html>
